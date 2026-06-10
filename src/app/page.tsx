@@ -1,65 +1,151 @@
-import Image from "next/image";
+import Link from "next/link";
+import { prisma } from "../lib/db";
+import { requireBusiness } from "../lib/business";
+import { profitAndLoss, balanceSheet } from "../lib/accounting";
+import { countDueRecurring } from "../lib/recurring";
+import { runAllDueRecurring } from "../lib/actions";
+import { formatMoney, formatDate, todayUTC } from "../lib/money";
 
-export default function Home() {
+export default async function Dashboard() {
+  const business = await requireBusiness();
+  const today = todayUTC();
+  const monthStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+  const yearStart = new Date(Date.UTC(today.getUTCFullYear(), 0, 1));
+
+  const [mtd, ytd, bs, dueRecurring, recentEntries, openInvoices] = await Promise.all([
+    profitAndLoss(business.id, monthStart, today),
+    profitAndLoss(business.id, yearStart, today),
+    balanceSheet(business.id, today),
+    countDueRecurring(business.id),
+    prisma.journalEntry.findMany({
+      where: { businessId: business.id, status: "POSTED" },
+      orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+      take: 8,
+      include: { lines: true, tags: { include: { tag: true } } },
+    }),
+    prisma.invoice.findMany({
+      where: { businessId: business.id, status: "SENT" },
+      include: { customer: true },
+      orderBy: { dueDate: "asc" },
+      take: 5,
+    }),
+  ]);
+
+  const cards = [
+    { label: "Income (MTD)", value: mtd.totalIncome },
+    { label: "Expenses (MTD)", value: mtd.totalExpenses },
+    { label: "Net income (YTD)", value: ytd.netIncome },
+    { label: "Total assets", value: bs.totalAssets },
+    { label: "Total liabilities", value: bs.totalLiabilities },
+  ];
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="flex flex-col gap-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="page-title">{business.name}</h1>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">{formatDate(today)}</p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+        <Link href="/transactions/new" className="btn btn-primary">
+          + New transaction
+        </Link>
+      </div>
+
+      {dueRecurring > 0 && (
+        <form
+          action={runAllDueRecurring}
+          className="flex items-center justify-between rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm dark:border-amber-800 dark:bg-amber-950"
+        >
+          <span>
+            {dueRecurring} recurring transaction{dueRecurring > 1 ? "s are" : " is"} due.
+          </span>
+          <button className="btn btn-sm">Post now</button>
+        </form>
+      )}
+
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+        {cards.map((card) => (
+          <div key={card.label} className="card">
+            <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">{card.label}</p>
+            <p className="mt-1 font-mono text-lg font-semibold">{formatMoney(card.value)}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+        <div className="card">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="font-semibold">Recent transactions</h2>
+            <Link href="/transactions" className="text-sm text-emerald-600 hover:underline">
+              View all
+            </Link>
+          </div>
+          {recentEntries.length === 0 ? (
+            <p className="text-sm text-zinc-500">No transactions yet.</p>
+          ) : (
+            <table className="w-full">
+              <tbody>
+                {recentEntries.map((entry) => (
+                  <tr key={entry.id}>
+                    <td className="td whitespace-nowrap text-zinc-500">{formatDate(entry.date)}</td>
+                    <td className="td">
+                      <Link href={`/transactions/${entry.id}`} className="hover:underline">
+                        {entry.memo}
+                      </Link>
+                      {entry.tags.map(({ tag }) => (
+                        <span
+                          key={tag.id}
+                          className="badge ml-1.5 text-white"
+                          style={{ backgroundColor: tag.color }}
+                        >
+                          {tag.name}
+                        </span>
+                      ))}
+                    </td>
+                    <td className="td text-right font-mono">
+                      {formatMoney(entry.lines.reduce((s, l) => s + l.debit, 0))}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
-      </main>
+
+        <div className="card">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="font-semibold">Open invoices</h2>
+            <Link href="/invoices" className="text-sm text-emerald-600 hover:underline">
+              View all
+            </Link>
+          </div>
+          {openInvoices.length === 0 ? (
+            <p className="text-sm text-zinc-500">No open invoices.</p>
+          ) : (
+            <table className="w-full">
+              <tbody>
+                {openInvoices.map((invoice) => {
+                  const overdue = invoice.dueDate < today;
+                  return (
+                    <tr key={invoice.id}>
+                      <td className="td">
+                        <Link href={`/invoices/${invoice.id}`} className="hover:underline">
+                          {invoice.number}
+                        </Link>
+                      </td>
+                      <td className="td">{invoice.customer.name}</td>
+                      <td className={`td whitespace-nowrap ${overdue ? "text-red-600 dark:text-red-400" : "text-zinc-500"}`}>
+                        due {formatDate(invoice.dueDate)}
+                      </td>
+                      <td className="td text-right font-mono">{formatMoney(invoice.total)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

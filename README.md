@@ -1,36 +1,72 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🌱 Beanstalk
 
-## Getting Started
+Self-hosted double-entry accounting for small business — a QuickBooks replacement that keeps
+your books in a local SQLite file and your documents in your own Google Drive.
 
-First, run the development server:
+## Features
+
+- **Double-entry ledger** — every transaction is a balanced journal entry (debits = credits,
+  enforced at the API). Void or edit entries with full line detail.
+- **Chart of accounts with nesting** — assets, liabilities, equity, income, and expenses;
+  sub-accounts roll up into their parents. A standard chart (with IRS Schedule C tax-line
+  mappings) is seeded into every new business.
+- **Multi-business** — create and manage any number of businesses and switch between them
+  from the sidebar. Each keeps its own accounts, entries, invoices, tags, and documents.
+- **Invoices** — draft → sent (posts Accounts Receivable) → paid (records the deposit),
+  with partial payments, void, customer management, and auto-numbering.
+- **Recurring transactions** — repeat any entry daily/weekly/monthly/yearly at an interval,
+  with optional end date, auto-post or manual confirmation, catch-up posting, and pause/resume.
+- **Tags** — color-coded labels across transactions (projects, clients, locations); filter
+  the register by tag.
+- **Reports for tax season** — Profit & Loss, Balance Sheet, Trial Balance, General Ledger,
+  and a Tax Summary grouped by tax line for your accountant. All exportable as CSV.
+- **Google Workspace document storage** — receipts, contracts, and statements upload to
+  `Beanstalk/<business>` in your Google Drive and link to transactions and invoices.
+- **Dark & light themes** — follows your system, toggleable from the sidebar.
+
+## Stack
+
+Next.js 16 (App Router, server actions) · TypeScript · Prisma 6 + SQLite · Tailwind CSS 4 ·
+next-themes · googleapis
+
+## Getting started
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npx prisma migrate dev   # creates prisma/dev.db
+npm run dev              # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Create your first business on the Businesses page — the chart of accounts is seeded
+automatically. Optionally `npm run seed` to add a demo business with sample data
+(delete it from the Businesses page when done).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+All amounts are stored as integer cents; dates are stored as UTC dates.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Google Drive setup (optional)
 
-## Learn More
+1. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials), create an
+   OAuth 2.0 client (Web application) and enable the **Google Drive API**.
+2. Add `http://localhost:3000/api/google/callback` as an authorized redirect URI.
+3. Copy the client ID/secret into `.env` (`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`).
+4. Visit **Documents → Connect Google Drive**.
 
-To learn more about Next.js, take a look at the following resources:
+The integration uses the `drive.file` scope, so Beanstalk can only see files it created.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Useful scripts
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Script | Purpose |
+| --- | --- |
+| `npm run dev` | Dev server |
+| `npm run build && npm start` | Production build / serve |
+| `npm run db:migrate` | Apply schema changes |
+| `npm run db:studio` | Browse the database in Prisma Studio |
+| `npm run seed` | Create the demo business |
 
-## Deploy on Vercel
+## Accounting conventions
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Debits increase assets and expenses; credits increase liabilities, equity, and income.
+- Account balances are signed by the account's normal balance, so healthy accounts read
+  positive everywhere in the UI.
+- The Balance Sheet shows lifetime net income inside equity, so it always ties to assets.
+- Voided entries stay in the register for audit but are excluded from every balance and report.

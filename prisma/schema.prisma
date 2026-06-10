@@ -1,0 +1,210 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Business {
+  id              String   @id @default(cuid())
+  name            String
+  legalName       String?
+  taxId           String?
+  fiscalYearStart Int      @default(1) // month 1-12
+  driveFolderId   String?
+  createdAt       DateTime @default(now())
+
+  accounts  Account[]
+  entries   JournalEntry[]
+  tags      Tag[]
+  customers Customer[]
+  invoices  Invoice[]
+  recurring RecurringTransaction[]
+  documents Document[]
+}
+
+// type: ASSET | LIABILITY | EQUITY | INCOME | EXPENSE
+model Account {
+  id          String  @id @default(cuid())
+  businessId  String
+  code        String?
+  name        String
+  type        String
+  description String?
+  taxLine     String?
+  isArchived  Boolean @default(false)
+  parentId    String?
+
+  business Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  parent   Account?      @relation("AccountChildren", fields: [parentId], references: [id])
+  children Account[]     @relation("AccountChildren")
+  lines    JournalLine[]
+  recurringLines RecurringLine[]
+  invoiceItems   InvoiceItem[]
+
+  @@index([businessId, type])
+}
+
+// status: POSTED | VOID
+model JournalEntry {
+  id          String   @id @default(cuid())
+  businessId  String
+  date        DateTime
+  memo        String
+  reference   String?
+  status      String   @default("POSTED")
+  invoiceId   String?
+  recurringId String?
+  createdAt   DateTime @default(now())
+
+  business  Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  invoice   Invoice?              @relation(fields: [invoiceId], references: [id])
+  recurring RecurringTransaction? @relation(fields: [recurringId], references: [id])
+  lines     JournalLine[]
+  tags      EntryTag[]
+  documents Document[]
+
+  @@index([businessId, date])
+}
+
+model JournalLine {
+  id          String  @id @default(cuid())
+  entryId     String
+  accountId   String
+  description String?
+  debit       Int     @default(0) // cents
+  credit      Int     @default(0) // cents
+
+  entry   JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  account Account      @relation(fields: [accountId], references: [id])
+
+  @@index([accountId])
+}
+
+model Tag {
+  id         String @id @default(cuid())
+  businessId String
+  name       String
+  color      String @default("#10b981")
+
+  business Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  entries  EntryTag[]
+
+  @@unique([businessId, name])
+}
+
+model EntryTag {
+  entryId String
+  tagId   String
+
+  entry JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  tag   Tag          @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([entryId, tagId])
+}
+
+model Customer {
+  id         String  @id @default(cuid())
+  businessId String
+  name       String
+  email      String?
+  address    String?
+
+  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  invoices Invoice[]
+}
+
+// status: DRAFT | SENT | PAID | VOID
+model Invoice {
+  id         String   @id @default(cuid())
+  businessId String
+  customerId String
+  number     String
+  issueDate  DateTime
+  dueDate    DateTime
+  status     String   @default("DRAFT")
+  notes      String?
+  total      Int      @default(0) // cents
+  createdAt  DateTime @default(now())
+
+  business Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer Customer       @relation(fields: [customerId], references: [id])
+  items    InvoiceItem[]
+  entries  JournalEntry[]
+  documents Document[]
+
+  @@unique([businessId, number])
+}
+
+model InvoiceItem {
+  id          String @id @default(cuid())
+  invoiceId   String
+  accountId   String // income account
+  description String
+  quantity    Float  @default(1)
+  unitPrice   Int    @default(0) // cents
+  amount      Int    @default(0) // cents
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  account Account @relation(fields: [accountId], references: [id])
+}
+
+// frequency: DAILY | WEEKLY | MONTHLY | YEARLY
+model RecurringTransaction {
+  id         String    @id @default(cuid())
+  businessId String
+  name       String
+  memo       String?
+  frequency  String
+  interval   Int       @default(1)
+  nextRun    DateTime
+  endDate    DateTime?
+  lastRun    DateTime?
+  autoPost   Boolean   @default(true)
+  isActive   Boolean   @default(true)
+
+  business Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  lines    RecurringLine[]
+  entries  JournalEntry[]
+}
+
+model RecurringLine {
+  id          String  @id @default(cuid())
+  recurringId String
+  accountId   String
+  description String?
+  debit       Int     @default(0)
+  credit      Int     @default(0)
+
+  recurring RecurringTransaction @relation(fields: [recurringId], references: [id], onDelete: Cascade)
+  account   Account              @relation(fields: [accountId], references: [id])
+}
+
+// category: RECEIPT | CONTRACT | OTHER
+model Document {
+  id          String   @id @default(cuid())
+  businessId  String
+  name        String
+  mimeType    String?
+  category    String   @default("OTHER")
+  driveFileId String
+  webViewLink String?
+  entryId     String?
+  invoiceId   String?
+  createdAt   DateTime @default(now())
+
+  business Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  entry    JournalEntry? @relation(fields: [entryId], references: [id])
+  invoice  Invoice?      @relation(fields: [invoiceId], references: [id])
+}
+
+model GoogleAuth {
+  id           String  @id @default("default")
+  accessToken  String
+  refreshToken String?
+  expiryDate   BigInt?
+  scope        String?
+  email        String?
+}
