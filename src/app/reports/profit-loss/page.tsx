@@ -12,9 +12,12 @@ export default async function ProfitLossPage({
   const business = await requireBusiness();
   const sp = await searchParams;
   const today = todayUTC();
-  const from = sp.from ? parseDate(sp.from) : new Date(Date.UTC(today.getUTCFullYear(), 0, 1));
+  // No explicit "from" alongside an explicit "to" (e.g. drilling from the balance
+  // sheet's earnings-to-date) means all-time; otherwise default to year-to-date.
+  const from = sp.from ? parseDate(sp.from) : sp.to ? undefined : new Date(Date.UTC(today.getUTCFullYear(), 0, 1));
   const to = sp.to ? parseDate(sp.to) : today;
   const report = await profitAndLoss(business.id, from, to);
+  const drill = { from: from ? toDateInput(from) : undefined, to: toDateInput(to) };
 
   return (
     <div className="flex flex-col gap-6">
@@ -28,7 +31,7 @@ export default async function ProfitLossPage({
         </div>
         <a
           className="btn btn-sm"
-          href={`/api/export?report=profit-loss&from=${toDateInput(from)}&to=${toDateInput(to)}`}
+          href={`/api/export?report=profit-loss${from ? `&from=${toDateInput(from)}` : ""}&to=${toDateInput(to)}`}
         >
           Export CSV
         </a>
@@ -37,7 +40,7 @@ export default async function ProfitLossPage({
       <form className="card flex flex-wrap items-end gap-3" method="GET">
         <div>
           <label className="label">From</label>
-          <input type="date" name="from" defaultValue={toDateInput(from)} className="input" />
+          <input type="date" name="from" defaultValue={from ? toDateInput(from) : ""} className="input" />
         </div>
         <div>
           <label className="label">To</label>
@@ -54,7 +57,7 @@ export default async function ProfitLossPage({
                 Income
               </td>
             </tr>
-            <ReportTreeRows nodes={report.income} />
+            <ReportTreeRows nodes={report.income} drill={drill} />
             <tr>
               <td className="td font-semibold">Total income</td>
               <td className="td text-right font-mono font-semibold">{formatMoney(report.totalIncome)}</td>
@@ -64,7 +67,7 @@ export default async function ProfitLossPage({
                 Expenses
               </td>
             </tr>
-            <ReportTreeRows nodes={report.expenses} />
+            <ReportTreeRows nodes={report.expenses} drill={drill} />
             <tr>
               <td className="td font-semibold">Total expenses</td>
               <td className="td text-right font-mono font-semibold">{formatMoney(report.totalExpenses)}</td>

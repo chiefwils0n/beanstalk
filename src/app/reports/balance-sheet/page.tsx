@@ -48,7 +48,7 @@ export default async function BalanceSheetPage({
                 Assets
               </td>
             </tr>
-            <ReportTreeRows nodes={report.assets} />
+            <ReportTreeRows nodes={report.assets} drill={{ to: toDateInput(asOf) }} />
             <tr>
               <td className="td font-semibold">Total assets</td>
               <td className="td text-right font-mono font-semibold">{formatMoney(report.totalAssets)}</td>
@@ -58,7 +58,7 @@ export default async function BalanceSheetPage({
                 Liabilities
               </td>
             </tr>
-            <ReportTreeRows nodes={report.liabilities} />
+            <ReportTreeRows nodes={report.liabilities} drill={{ to: toDateInput(asOf) }} />
             <tr>
               <td className="td font-semibold">Total liabilities</td>
               <td className="td text-right font-mono font-semibold">{formatMoney(report.totalLiabilities)}</td>
@@ -68,9 +68,16 @@ export default async function BalanceSheetPage({
                 Equity
               </td>
             </tr>
-            <ReportTreeRows nodes={report.equity} />
+            <ReportTreeRows nodes={report.equity} drill={{ to: toDateInput(asOf) }} />
             <tr>
-              <td className="td">Net income (earnings to date)</td>
+              <td className="td">
+                <Link
+                  href={`/reports/profit-loss?to=${toDateInput(asOf)}`}
+                  className="hover:text-emerald-600 hover:underline dark:hover:text-emerald-400"
+                >
+                  Net income (earnings to date)
+                </Link>
+              </td>
               <td className="td text-right font-mono">{formatMoney(report.netIncome)}</td>
             </tr>
             <tr>

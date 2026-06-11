@@ -3,8 +3,10 @@ import { requireBusiness } from "../../../lib/business";
 import { taxSummary } from "../../../lib/accounting";
 import { formatMoney, todayUTC } from "../../../lib/money";
 import type { TaxGroup } from "../../../lib/accounting";
+import { ledgerHref } from "../../../components/ReportTree";
 
-function TaxGroupRows({ groups }: { groups: TaxGroup[] }) {
+function TaxGroupRows({ groups, year }: { groups: TaxGroup[]; year: number }) {
+  const drill = { from: `${year}-01-01`, to: `${year}-12-31` };
   return (
     <>
       {groups.map((group) => (
@@ -17,7 +19,12 @@ function TaxGroupRows({ groups }: { groups: TaxGroup[] }) {
             <tr key={account.id}>
               <td className="td pl-8 text-zinc-500">
                 {account.code && <span className="mr-2 font-mono text-xs">{account.code}</span>}
-                {account.name}
+                <Link
+                  href={ledgerHref(account.id, drill)}
+                  className="hover:text-emerald-600 hover:underline dark:hover:text-emerald-400"
+                >
+                  {account.name}
+                </Link>
               </td>
               <td className="td text-right font-mono text-zinc-500">{formatMoney(amount)}</td>
             </tr>
@@ -81,7 +88,7 @@ export default async function TaxSummaryPage({
               <th className="th text-right">Amount</th>
             </tr>
           </thead>
-          <TaxGroupRows groups={report.incomeGroups} />
+          <TaxGroupRows groups={report.incomeGroups} year={year} />
           <tbody>
             <tr className="bg-zinc-50 dark:bg-zinc-800/50">
               <td className="td font-bold">Total income</td>
@@ -99,7 +106,7 @@ export default async function TaxSummaryPage({
               <th className="th text-right">Amount</th>
             </tr>
           </thead>
-          <TaxGroupRows groups={report.expenseGroups} />
+          <TaxGroupRows groups={report.expenseGroups} year={year} />
           <tbody>
             <tr className="bg-zinc-50 dark:bg-zinc-800/50">
               <td className="td font-bold">Total expenses</td>

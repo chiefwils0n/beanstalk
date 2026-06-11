@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireBusiness } from "../../../lib/business";
 import { trialBalance } from "../../../lib/accounting";
 import { formatMoney, parseDate, toDateInput } from "../../../lib/money";
+import { ledgerHref } from "../../../components/ReportTree";
 
 export default async function TrialBalancePage({
   searchParams,
@@ -60,7 +61,12 @@ export default async function TrialBalancePage({
                   {row.account.code && (
                     <span className="mr-2 font-mono text-xs text-zinc-400">{row.account.code}</span>
                   )}
-                  {row.account.name}
+                  <Link
+                    href={ledgerHref(row.account.id, { from: sp.from, to: sp.to })}
+                    className="hover:text-emerald-600 hover:underline dark:hover:text-emerald-400"
+                  >
+                    {row.account.name}
+                  </Link>
                 </td>
                 <td className="td text-right font-mono">{row.debit ? formatMoney(row.debit) : ""}</td>
                 <td className="td text-right font-mono">{row.credit ? formatMoney(row.credit) : ""}</td>

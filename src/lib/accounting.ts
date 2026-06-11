@@ -115,7 +115,7 @@ export async function getAccountsByType(businessId: string, type: string) {
   });
 }
 
-export async function profitAndLoss(businessId: string, from: Date, to: Date) {
+export async function profitAndLoss(businessId: string, from: Date | undefined, to: Date) {
   const [accounts, balances] = await Promise.all([
     prisma.account.findMany({ where: { businessId, type: { in: ["INCOME", "EXPENSE"] } } }),
     getBalances(businessId, { from, to }),

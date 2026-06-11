@@ -12,7 +12,8 @@ export default async function GeneralLedgerPage({
   const business = await requireBusiness();
   const sp = await searchParams;
   const today = todayUTC();
-  const from = sp.from ? parseDate(sp.from) : new Date(Date.UTC(today.getUTCFullYear(), 0, 1));
+  // No "from" means all-time (balance-sheet drills need history from the first entry).
+  const from = sp.from ? parseDate(sp.from) : undefined;
   const to = sp.to ? parseDate(sp.to) : today;
 
   const [accounts, lines] = await Promise.all([
@@ -40,7 +41,7 @@ export default async function GeneralLedgerPage({
         </div>
         <a
           className="btn btn-sm"
-          href={`/api/export?report=general-ledger&from=${toDateInput(from)}&to=${toDateInput(to)}${sp.account ? `&account=${sp.account}` : ""}`}
+          href={`/api/export?report=general-ledger${from ? `&from=${toDateInput(from)}` : ""}&to=${toDateInput(to)}${sp.account ? `&account=${sp.account}` : ""}`}
         >
           Export CSV
         </a>
@@ -59,8 +60,8 @@ export default async function GeneralLedgerPage({
           </select>
         </div>
         <div>
-          <label className="label">From</label>
-          <input type="date" name="from" defaultValue={toDateInput(from)} className="input" />
+          <label className="label">From (blank = all time)</label>
+          <input type="date" name="from" defaultValue={from ? toDateInput(from) : ""} className="input" />
         </div>
         <div>
           <label className="label">To</label>
@@ -91,7 +92,15 @@ export default async function GeneralLedgerPage({
             {lines.map((line) => (
               <tr key={line.id}>
                 <td className="td whitespace-nowrap text-zinc-500">{formatDate(line.entry.date)}</td>
-                <td className="td">{line.account.name}</td>
+                <td className="td">
+                  <Link
+                    href={`/reports/general-ledger?account=${line.accountId}${sp.from ? `&from=${sp.from}` : ""}${sp.to ? `&to=${sp.to}` : ""}`}
+                    className="hover:text-emerald-600 hover:underline dark:hover:text-emerald-400"
+                    title={`Filter to ${line.account.name}`}
+                  >
+                    {line.account.name}
+                  </Link>
+                </td>
                 <td className="td">
                   <Link href={`/transactions/${line.entryId}`} className="hover:underline">
                     {line.description || line.entry.memo}

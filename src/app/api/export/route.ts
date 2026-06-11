@@ -40,8 +40,9 @@ export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
   const report = params.get("report");
   const today = todayUTC();
-  const from = params.get("from") ? parseDate(params.get("from")!) : new Date(Date.UTC(today.getUTCFullYear(), 0, 1));
+  const from = params.get("from") ? parseDate(params.get("from")!) : undefined;
   const to = params.get("to") ? parseDate(params.get("to")!) : today;
+  const fromLabel = from ? toDateInput(from) : "all-time";
 
   let rows: (string | number)[][] = [];
   let filename = "report.csv";
@@ -49,10 +50,10 @@ export async function GET(request: NextRequest) {
   switch (report) {
     case "profit-loss": {
       const data = await profitAndLoss(business.id, from, to);
-      filename = `profit-loss_${toDateInput(from)}_${toDateInput(to)}.csv`;
+      filename = `profit-loss_${fromLabel}_${toDateInput(to)}.csv`;
       rows = [
         [`Profit & Loss — ${business.name}`, ""],
-        [`${toDateInput(from)} to ${toDateInput(to)}`, ""],
+        [`${fromLabel} to ${toDateInput(to)}`, ""],
         ["Income", ""],
         ...treeRows(data.income),
         ["Total income", data.totalIncome],
@@ -109,7 +110,7 @@ export async function GET(request: NextRequest) {
         include: { entry: true, account: true },
         orderBy: [{ entry: { date: "asc" } }],
       });
-      filename = `general-ledger_${toDateInput(from)}_${toDateInput(to)}.csv`;
+      filename = `general-ledger_${fromLabel}_${toDateInput(to)}.csv`;
       rows = [
         ["Date", "Account", "Memo", "Reference", "Debit", "Credit"],
         ...lines.map((line): (string | number)[] => [
