@@ -11,6 +11,7 @@ const NAV: [string, string][] = [
   ["Invoices", "/invoices"],
   ["Chart of Accounts", "/accounts"],
   ["Tags", "/tags"],
+  ["Classes", "/classes"],
   ["Recurring", "/recurring"],
   ["Documents", "/documents"],
   ["Reports", "/reports"],

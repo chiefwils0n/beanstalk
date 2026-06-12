@@ -5,12 +5,13 @@ import { InvoiceForm } from "../../../components/InvoiceForm";
 
 export default async function NewInvoicePage() {
   const business = await requireBusiness();
-  const [customers, incomeAccounts] = await Promise.all([
+  const [customers, incomeAccounts, classes] = await Promise.all([
     prisma.customer.findMany({ where: { businessId: business.id }, orderBy: { name: "asc" } }),
     prisma.account.findMany({
       where: { businessId: business.id, type: "INCOME", isArchived: false },
       orderBy: { code: "asc" },
     }),
+    prisma.class.findMany({ where: { businessId: business.id }, orderBy: { name: "asc" } }),
   ]);
   const today = todayUTC();
   const due = new Date(today);
@@ -25,6 +26,7 @@ export default async function NewInvoicePage() {
           id: a.id,
           label: `${a.code ? a.code + " · " : ""}${a.name}`,
         }))}
+        classes={classes.map((c) => ({ id: c.id, name: c.name }))}
         defaultIssueDate={toDateInput(today)}
         defaultDueDate={toDateInput(due)}
       />

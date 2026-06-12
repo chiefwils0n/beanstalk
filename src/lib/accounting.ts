@@ -15,10 +15,11 @@ type RawBalance = { debit: number; credit: number };
 
 export async function getBalances(
   businessId: string,
-  opts: { from?: Date; to?: Date } = {}
+  opts: { from?: Date; to?: Date; classId?: string } = {}
 ): Promise<Map<string, RawBalance>> {
   const lines = await prisma.journalLine.findMany({
     where: {
+      classId: opts.classId,
       entry: {
         businessId,
         status: "POSTED",
@@ -115,10 +116,15 @@ export async function getAccountsByType(businessId: string, type: string) {
   });
 }
 
-export async function profitAndLoss(businessId: string, from: Date | undefined, to: Date) {
+export async function profitAndLoss(
+  businessId: string,
+  from: Date | undefined,
+  to: Date,
+  classId?: string
+) {
   const [accounts, balances] = await Promise.all([
     prisma.account.findMany({ where: { businessId, type: { in: ["INCOME", "EXPENSE"] } } }),
-    getBalances(businessId, { from, to }),
+    getBalances(businessId, { from, to, classId }),
   ]);
   const income = buildTree(accounts.filter((a) => a.type === "INCOME"), balances);
   const expenses = buildTree(accounts.filter((a) => a.type === "EXPENSE"), balances);

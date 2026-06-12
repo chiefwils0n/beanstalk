@@ -6,9 +6,10 @@ import { EntryForm } from "../../../components/EntryForm";
 
 export default async function NewTransactionPage() {
   const business = await requireBusiness();
-  const [accounts, tags] = await Promise.all([
+  const [accounts, tags, classes] = await Promise.all([
     prisma.account.findMany({ where: { businessId: business.id, isArchived: false } }),
     prisma.tag.findMany({ where: { businessId: business.id }, orderBy: { name: "asc" } }),
+    prisma.class.findMany({ where: { businessId: business.id }, orderBy: { name: "asc" } }),
   ]);
 
   return (
@@ -21,6 +22,7 @@ export default async function NewTransactionPage() {
       <EntryForm
         accounts={flattenAccounts(accounts)}
         tags={tags.map((t) => ({ id: t.id, name: t.name, color: t.color }))}
+        classes={classes.map((c) => ({ id: c.id, name: c.name }))}
         defaultDate={toDateInput(todayUTC())}
       />
     </div>

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { prisma } from "../../../lib/db";
 import { requireBusiness } from "../../../lib/business";
 import { profitAndLoss } from "../../../lib/accounting";
 import { formatMoney, parseDate, toDateInput, todayUTC } from "../../../lib/money";
@@ -7,7 +8,7 @@ import { ReportTreeRows } from "../../../components/ReportTree";
 export default async function ProfitLossPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string }>;
+  searchParams: Promise<{ from?: string; to?: string; class?: string }>;
 }) {
   const business = await requireBusiness();
   const sp = await searchParams;
@@ -16,8 +17,13 @@ export default async function ProfitLossPage({
   // sheet's earnings-to-date) means all-time; otherwise default to year-to-date.
   const from = sp.from ? parseDate(sp.from) : sp.to ? undefined : new Date(Date.UTC(today.getUTCFullYear(), 0, 1));
   const to = sp.to ? parseDate(sp.to) : today;
-  const report = await profitAndLoss(business.id, from, to);
-  const drill = { from: from ? toDateInput(from) : undefined, to: toDateInput(to) };
+  const classId = sp.class || undefined;
+  const [report, classes] = await Promise.all([
+    profitAndLoss(business.id, from, to, classId),
+    prisma.class.findMany({ where: { businessId: business.id }, orderBy: { name: "asc" } }),
+  ]);
+  const activeClass = classes.find((c) => c.id === classId);
+  const drill = { from: from ? toDateInput(from) : undefined, to: toDateInput(to), classId };
 
   return (
     <div className="flex flex-col gap-6">
@@ -27,11 +33,14 @@ export default async function ProfitLossPage({
             ← Reports
           </Link>
           <h1 className="page-title mt-1">Profit &amp; Loss</h1>
-          <p className="text-sm text-zinc-500">{business.name}</p>
+          <p className="text-sm text-zinc-500">
+            {business.name}
+            {activeClass && ` · class: ${activeClass.name}`}
+          </p>
         </div>
         <a
           className="btn btn-sm"
-          href={`/api/export?report=profit-loss${from ? `&from=${toDateInput(from)}` : ""}&to=${toDateInput(to)}`}
+          href={`/api/export?report=profit-loss${from ? `&from=${toDateInput(from)}` : ""}&to=${toDateInput(to)}${classId ? `&class=${classId}` : ""}`}
         >
           Export CSV
         </a>
@@ -46,6 +55,19 @@ export default async function ProfitLossPage({
           <label className="label">To</label>
           <input type="date" name="to" defaultValue={toDateInput(to)} className="input" />
         </div>
+        {classes.length > 0 && (
+          <div>
+            <label className="label">Class</label>
+            <select name="class" defaultValue={classId ?? ""} className="input">
+              <option value="">All classes</option>
+              {classes.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <button className="btn">Run report</button>
       </form>
 

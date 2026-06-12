@@ -7,9 +7,22 @@ import { parseMoney, formatMoney } from "../lib/money";
 
 export type AccountOption = { id: string; label: string; type: string };
 export type TagOption = { id: string; name: string; color: string };
-export type LineState = { accountId: string; description: string; debit: string; credit: string };
+export type ClassOption = { id: string; name: string };
+export type LineState = {
+  accountId: string;
+  classId: string;
+  description: string;
+  debit: string;
+  credit: string;
+};
 
-const emptyLine = (): LineState => ({ accountId: "", description: "", debit: "", credit: "" });
+const emptyLine = (): LineState => ({
+  accountId: "",
+  classId: "",
+  description: "",
+  debit: "",
+  credit: "",
+});
 
 function safeCents(value: string): number {
   try {
@@ -22,16 +35,19 @@ function safeCents(value: string): number {
 export function EntryForm({
   accounts,
   tags,
+  classes,
   defaultDate,
   entryId,
   initial,
 }: {
   accounts: AccountOption[];
   tags: TagOption[];
+  classes: ClassOption[];
   defaultDate: string;
   entryId?: string;
   initial?: { date: string; memo: string; reference: string; tagIds: string[]; lines: LineState[] };
 }) {
+  const hasClasses = classes.length > 0;
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -59,6 +75,7 @@ export function EntryForm({
       tagIds,
       lines: lines.map((l) => ({
         accountId: l.accountId,
+        classId: l.classId || undefined,
         description: l.description || undefined,
         debit: safeCents(l.debit) || 0,
         credit: safeCents(l.credit) || 0,
@@ -107,6 +124,7 @@ export function EntryForm({
           <tr>
             <th className="th w-2/5">Account</th>
             <th className="th">Description</th>
+            {hasClasses && <th className="th w-36">Class</th>}
             <th className="th w-28 text-right">Debit</th>
             <th className="th w-28 text-right">Credit</th>
             <th className="th w-8" />
@@ -136,6 +154,22 @@ export function EntryForm({
                   onChange={(e) => setLine(i, { description: e.target.value })}
                 />
               </td>
+              {hasClasses && (
+                <td className="td">
+                  <select
+                    className="input"
+                    value={line.classId}
+                    onChange={(e) => setLine(i, { classId: e.target.value })}
+                  >
+                    <option value="">— no class —</option>
+                    {classes.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+              )}
               <td className="td">
                 <input
                   className="input text-right"
@@ -170,7 +204,7 @@ export function EntryForm({
         </tbody>
         <tfoot>
           <tr>
-            <td className="td font-medium" colSpan={2}>
+            <td className="td font-medium" colSpan={hasClasses ? 3 : 2}>
               <button type="button" className="btn btn-sm" onClick={() => setLines((p) => [...p, emptyLine()])}>
                 + Add line
               </button>

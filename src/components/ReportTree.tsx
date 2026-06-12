@@ -2,13 +2,14 @@ import Link from "next/link";
 import { formatMoney } from "../lib/money";
 import type { AccountNode } from "../lib/accounting";
 
-export type DrillRange = { from?: string; to?: string };
+export type DrillRange = { from?: string; to?: string; classId?: string };
 
 /** Link into the General Ledger filtered to one account over the report's range. */
 export function ledgerHref(accountId: string, drill?: DrillRange): string {
   const params = new URLSearchParams({ account: accountId });
   if (drill?.from) params.set("from", drill.from);
   if (drill?.to) params.set("to", drill.to);
+  if (drill?.classId) params.set("class", drill.classId);
   return `/reports/general-ledger?${params.toString()}`;
 }
 

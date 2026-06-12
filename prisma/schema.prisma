@@ -19,10 +19,26 @@ model Business {
   accounts  Account[]
   entries   JournalEntry[]
   tags      Tag[]
+  classes   Class[]
   customers Customer[]
   invoices  Invoice[]
   recurring RecurringTransaction[]
   documents Document[]
+}
+
+// Line-level reporting dimension (department, location, product line, …),
+// like QuickBooks classes. Deleting a class leaves its lines unclassified.
+model Class {
+  id         String @id @default(cuid())
+  businessId String
+  name       String
+
+  business       Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  lines          JournalLine[]
+  recurringLines RecurringLine[]
+  invoiceItems   InvoiceItem[]
+
+  @@unique([businessId, name])
 }
 
 // type: ASSET | LIABILITY | EQUITY | INCOME | EXPENSE
@@ -73,14 +89,17 @@ model JournalLine {
   id          String  @id @default(cuid())
   entryId     String
   accountId   String
+  classId     String?
   description String?
   debit       Int     @default(0) // cents
   credit      Int     @default(0) // cents
 
   entry   JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
   account Account      @relation(fields: [accountId], references: [id])
+  class   Class?       @relation(fields: [classId], references: [id], onDelete: SetNull)
 
   @@index([accountId])
+  @@index([classId])
 }
 
 model Tag {
@@ -139,16 +158,18 @@ model Invoice {
 }
 
 model InvoiceItem {
-  id          String @id @default(cuid())
+  id          String  @id @default(cuid())
   invoiceId   String
   accountId   String // income account
+  classId     String?
   description String
-  quantity    Float  @default(1)
-  unitPrice   Int    @default(0) // cents
-  amount      Int    @default(0) // cents
+  quantity    Float   @default(1)
+  unitPrice   Int     @default(0) // cents
+  amount      Int     @default(0) // cents
 
   invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   account Account @relation(fields: [accountId], references: [id])
+  class   Class?  @relation(fields: [classId], references: [id], onDelete: SetNull)
 }
 
 // frequency: DAILY | WEEKLY | MONTHLY | YEARLY
@@ -174,12 +195,14 @@ model RecurringLine {
   id          String  @id @default(cuid())
   recurringId String
   accountId   String
+  classId     String?
   description String?
   debit       Int     @default(0)
   credit      Int     @default(0)
 
   recurring RecurringTransaction @relation(fields: [recurringId], references: [id], onDelete: Cascade)
   account   Account              @relation(fields: [accountId], references: [id])
+  class     Class?               @relation(fields: [classId], references: [id], onDelete: SetNull)
 }
 
 // category: RECEIPT | CONTRACT | OTHER

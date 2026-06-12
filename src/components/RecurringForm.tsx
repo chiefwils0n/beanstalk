@@ -5,9 +5,15 @@ import { useRouter } from "next/navigation";
 import { createRecurring } from "../lib/actions";
 import { parseMoney, formatMoney } from "../lib/money";
 import { FREQUENCIES, FREQUENCY_LABELS, type Frequency } from "../lib/types";
-import type { AccountOption, LineState } from "./EntryForm";
+import type { AccountOption, ClassOption, LineState } from "./EntryForm";
 
-const emptyLine = (): LineState => ({ accountId: "", description: "", debit: "", credit: "" });
+const emptyLine = (): LineState => ({
+  accountId: "",
+  classId: "",
+  description: "",
+  debit: "",
+  credit: "",
+});
 
 function safeCents(value: string): number {
   try {
@@ -19,11 +25,14 @@ function safeCents(value: string): number {
 
 export function RecurringForm({
   accounts,
+  classes,
   defaultDate,
 }: {
   accounts: AccountOption[];
+  classes: ClassOption[];
   defaultDate: string;
 }) {
+  const hasClasses = classes.length > 0;
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -56,6 +65,7 @@ export function RecurringForm({
         autoPost,
         lines: lines.map((l) => ({
           accountId: l.accountId,
+          classId: l.classId || undefined,
           description: l.description || undefined,
           debit: safeCents(l.debit) || 0,
           credit: safeCents(l.credit) || 0,
@@ -132,6 +142,7 @@ export function RecurringForm({
           <tr>
             <th className="th w-2/5">Account</th>
             <th className="th">Description</th>
+            {hasClasses && <th className="th w-36">Class</th>}
             <th className="th w-28 text-right">Debit</th>
             <th className="th w-28 text-right">Credit</th>
             <th className="th w-8" />
@@ -161,6 +172,22 @@ export function RecurringForm({
                   onChange={(e) => setLine(i, { description: e.target.value })}
                 />
               </td>
+              {hasClasses && (
+                <td className="td">
+                  <select
+                    className="input"
+                    value={line.classId}
+                    onChange={(e) => setLine(i, { classId: e.target.value })}
+                  >
+                    <option value="">— no class —</option>
+                    {classes.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+              )}
               <td className="td">
                 <input
                   className="input text-right"
@@ -195,7 +222,7 @@ export function RecurringForm({
         </tbody>
         <tfoot>
           <tr>
-            <td className="td" colSpan={2}>
+            <td className="td" colSpan={hasClasses ? 3 : 2}>
               <button type="button" className="btn btn-sm" onClick={() => setLines((p) => [...p, emptyLine()])}>
                 + Add line
               </button>

@@ -151,10 +151,35 @@ export async function deleteTag(formData: FormData) {
   revalidatePath("/tags");
 }
 
+// ------------------------------------------------------------------- classes
+
+export async function createClass(formData: FormData) {
+  const business = await requireBusiness();
+  const name = str(formData, "name");
+  if (!name) throw new Error("Class name is required");
+  await prisma.class.create({ data: { businessId: business.id, name } });
+  revalidatePath("/classes");
+}
+
+export async function updateClass(formData: FormData) {
+  const id = str(formData, "id");
+  const name = str(formData, "name");
+  if (!name) throw new Error("Class name is required");
+  await prisma.class.update({ where: { id }, data: { name } });
+  revalidatePath("/classes");
+}
+
+export async function deleteClass(formData: FormData) {
+  // Lines keep their data; classId is nulled out by the relation's SetNull.
+  await prisma.class.delete({ where: { id: str(formData, "id") } });
+  revalidatePath("/classes");
+}
+
 // ------------------------------------------------------------ journal entries
 
 export type EntryLineInput = {
   accountId: string;
+  classId?: string;
   description?: string;
   debit: number; // cents
   credit: number; // cents
@@ -169,7 +194,9 @@ export type EntryInput = {
 };
 
 function validateEntry(input: EntryInput) {
-  const lines = input.lines.filter((l) => l.accountId && (l.debit !== 0 || l.credit !== 0));
+  const lines = input.lines
+    .filter((l) => l.accountId && (l.debit !== 0 || l.credit !== 0))
+    .map((l) => ({ ...l, classId: l.classId || undefined }));
   if (lines.length < 2) return { error: "An entry needs at least two non-zero lines" };
   for (const line of lines) {
     if (line.debit < 0 || line.credit < 0) return { error: "Amounts must be positive" };
@@ -261,6 +288,7 @@ export async function createCustomer(formData: FormData) {
 
 export type InvoiceItemInput = {
   accountId: string;
+  classId?: string;
   description: string;
   quantity: number;
   unitPrice: number; // cents
@@ -304,6 +332,7 @@ export async function createInvoice(input: InvoiceInput): Promise<{ error?: stri
       items: {
         create: items.map((i) => ({
           accountId: i.accountId,
+          classId: i.classId || undefined,
           description: i.description,
           quantity: i.quantity,
           unitPrice: i.unitPrice,
@@ -347,6 +376,7 @@ export async function sendInvoice(formData: FormData) {
           { accountId: receivable.id, debit: invoice.total, credit: 0 },
           ...invoice.items.map((item) => ({
             accountId: item.accountId,
+            classId: item.classId,
             description: item.description,
             debit: 0,
             credit: item.amount,
@@ -442,7 +472,9 @@ export type RecurringInput = {
 export async function createRecurring(input: RecurringInput): Promise<{ error?: string }> {
   const business = await requireBusiness();
   if (!input.name.trim()) return { error: "Name is required" };
-  const lines = input.lines.filter((l) => l.accountId && (l.debit !== 0 || l.credit !== 0));
+  const lines = input.lines
+    .filter((l) => l.accountId && (l.debit !== 0 || l.credit !== 0))
+    .map((l) => ({ ...l, classId: l.classId || undefined }));
   if (lines.length < 2) return { error: "A recurring transaction needs at least two non-zero lines" };
   const totalDebit = lines.reduce((s, l) => s + l.debit, 0);
   const totalCredit = lines.reduce((s, l) => s + l.credit, 0);

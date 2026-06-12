@@ -5,9 +5,21 @@ import { useRouter } from "next/navigation";
 import { createInvoice } from "../lib/actions";
 import { parseMoney, formatMoney } from "../lib/money";
 
-type ItemState = { accountId: string; description: string; quantity: string; unitPrice: string };
+type ItemState = {
+  accountId: string;
+  classId: string;
+  description: string;
+  quantity: string;
+  unitPrice: string;
+};
 
-const emptyItem = (): ItemState => ({ accountId: "", description: "", quantity: "1", unitPrice: "" });
+const emptyItem = (): ItemState => ({
+  accountId: "",
+  classId: "",
+  description: "",
+  quantity: "1",
+  unitPrice: "",
+});
 
 function cents(value: string): number {
   try {
@@ -20,14 +32,17 @@ function cents(value: string): number {
 export function InvoiceForm({
   customers,
   incomeAccounts,
+  classes,
   defaultIssueDate,
   defaultDueDate,
 }: {
   customers: { id: string; name: string }[];
   incomeAccounts: { id: string; label: string }[];
+  classes: { id: string; name: string }[];
   defaultIssueDate: string;
   defaultDueDate: string;
 }) {
+  const hasClasses = classes.length > 0;
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -54,6 +69,7 @@ export function InvoiceForm({
         notes,
         items: items.map((it) => ({
           accountId: it.accountId,
+          classId: it.classId || undefined,
           description: it.description,
           quantity: Number(it.quantity || 0),
           unitPrice: cents(it.unitPrice),
@@ -107,6 +123,7 @@ export function InvoiceForm({
           <tr>
             <th className="th">Description</th>
             <th className="th w-1/4">Income account</th>
+            {hasClasses && <th className="th w-32">Class</th>}
             <th className="th w-20 text-right">Qty</th>
             <th className="th w-28 text-right">Unit price</th>
             <th className="th w-28 text-right">Amount</th>
@@ -138,6 +155,22 @@ export function InvoiceForm({
                   ))}
                 </select>
               </td>
+              {hasClasses && (
+                <td className="td">
+                  <select
+                    className="input"
+                    value={item.classId}
+                    onChange={(e) => setItem(i, { classId: e.target.value })}
+                  >
+                    <option value="">— no class —</option>
+                    {classes.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+              )}
               <td className="td">
                 <input
                   className="input text-right"
@@ -174,7 +207,7 @@ export function InvoiceForm({
         </tbody>
         <tfoot>
           <tr>
-            <td className="td" colSpan={3}>
+            <td className="td" colSpan={hasClasses ? 4 : 3}>
               <button type="button" className="btn btn-sm" onClick={() => setItems((p) => [...p, emptyItem()])}>
                 + Add item
               </button>

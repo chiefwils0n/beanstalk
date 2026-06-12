@@ -43,13 +43,14 @@ export async function GET(request: NextRequest) {
   const from = params.get("from") ? parseDate(params.get("from")!) : undefined;
   const to = params.get("to") ? parseDate(params.get("to")!) : today;
   const fromLabel = from ? toDateInput(from) : "all-time";
+  const classId = params.get("class") || undefined;
 
   let rows: (string | number)[][] = [];
   let filename = "report.csv";
 
   switch (report) {
     case "profit-loss": {
-      const data = await profitAndLoss(business.id, from, to);
+      const data = await profitAndLoss(business.id, from, to, classId);
       filename = `profit-loss_${fromLabel}_${toDateInput(to)}.csv`;
       rows = [
         [`Profit & Loss — ${business.name}`, ""],
@@ -105,19 +106,21 @@ export async function GET(request: NextRequest) {
       const lines = await prisma.journalLine.findMany({
         where: {
           accountId,
+          classId,
           entry: { businessId: business.id, status: "POSTED", date: { gte: from, lte: to } },
         },
-        include: { entry: true, account: true },
+        include: { entry: true, account: true, class: true },
         orderBy: [{ entry: { date: "asc" } }],
       });
       filename = `general-ledger_${fromLabel}_${toDateInput(to)}.csv`;
       rows = [
-        ["Date", "Account", "Memo", "Reference", "Debit", "Credit"],
+        ["Date", "Account", "Memo", "Reference", "Class", "Debit", "Credit"],
         ...lines.map((line): (string | number)[] => [
           toDateInput(line.entry.date),
           line.account.name,
           line.description || line.entry.memo,
           line.entry.reference ?? "",
+          line.class?.name ?? "",
           line.debit,
           line.credit,
         ]),

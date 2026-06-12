@@ -49,6 +49,7 @@ export async function postOccurrence(recurringId: string, date: Date) {
       lines: {
         create: recurring.lines.map((line) => ({
           accountId: line.accountId,
+          classId: line.classId,
           description: line.description,
           debit: line.debit,
           credit: line.credit,

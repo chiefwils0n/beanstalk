@@ -15,9 +15,10 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
   });
   if (!entry) notFound();
 
-  const [accounts, tags] = await Promise.all([
+  const [accounts, tags, classes] = await Promise.all([
     prisma.account.findMany({ where: { businessId: entry.businessId } }),
     prisma.tag.findMany({ where: { businessId: entry.businessId }, orderBy: { name: "asc" } }),
+    prisma.class.findMany({ where: { businessId: entry.businessId }, orderBy: { name: "asc" } }),
   ]);
 
   return (
@@ -76,6 +77,7 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
       <EntryForm
         accounts={flattenAccounts(accounts)}
         tags={tags.map((t) => ({ id: t.id, name: t.name, color: t.color }))}
+        classes={classes.map((c) => ({ id: c.id, name: c.name }))}
         defaultDate={toDateInput(todayUTC())}
         entryId={entry.id}
         initial={{
@@ -85,6 +87,7 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
           tagIds: entry.tags.map((t) => t.tagId),
           lines: entry.lines.map((line) => ({
             accountId: line.accountId,
+            classId: line.classId ?? "",
             description: line.description ?? "",
             debit: line.debit ? (line.debit / 100).toFixed(2) : "",
             credit: line.credit ? (line.credit / 100).toFixed(2) : "",

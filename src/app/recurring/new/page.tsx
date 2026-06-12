@@ -6,9 +6,10 @@ import { RecurringForm } from "../../../components/RecurringForm";
 
 export default async function NewRecurringPage() {
   const business = await requireBusiness();
-  const accounts = await prisma.account.findMany({
-    where: { businessId: business.id, isArchived: false },
-  });
+  const [accounts, classes] = await Promise.all([
+    prisma.account.findMany({ where: { businessId: business.id, isArchived: false } }),
+    prisma.class.findMany({ where: { businessId: business.id }, orderBy: { name: "asc" } }),
+  ]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -17,7 +18,11 @@ export default async function NewRecurringPage() {
         The lines below are posted as a journal entry on each scheduled date — e.g. rent: debit
         Rent &amp; Lease, credit Checking.
       </p>
-      <RecurringForm accounts={flattenAccounts(accounts)} defaultDate={toDateInput(todayUTC())} />
+      <RecurringForm
+        accounts={flattenAccounts(accounts)}
+        classes={classes.map((c) => ({ id: c.id, name: c.name }))}
+        defaultDate={toDateInput(todayUTC())}
+      />
     </div>
   );
 }
