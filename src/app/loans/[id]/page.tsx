@@ -1,0 +1,203 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { prisma } from "../../../lib/db";
+import { loanState } from "../../../lib/loans";
+import { deleteLoan, deleteLoanPayment } from "../../../lib/actions";
+import { formatMoney, formatDate, toDateInput, todayUTC } from "../../../lib/money";
+import { PayoffChart, SplitChart } from "../../../components/LoanCharts";
+import { LoanPaymentForm } from "../../../components/LoanPaymentForm";
+import { LoanWhatIf } from "../../../components/LoanWhatIf";
+import { ConfirmButton } from "../../../components/ConfirmButton";
+
+export default async function LoanPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  const loan = await prisma.loan.findUnique({
+    where: { id },
+    include: {
+      payments: { orderBy: [{ date: "asc" }, { createdAt: "asc" }] },
+      lender: true,
+      liabilityAccount: true,
+      interestAccount: true,
+      paymentAccount: true,
+    },
+  });
+  if (!loan) notFound();
+
+  const state = loanState(loan, loan.payments);
+  const historyBalances: number[] = [];
+  let running = loan.principal;
+  for (const payment of loan.payments) {
+    running -= payment.principal;
+    historyBalances.push(Math.max(running, 0));
+  }
+
+  const cards = [
+    { label: "Current balance", value: formatMoney(state.balance) },
+    { label: "Monthly payment", value: `${formatMoney(loan.payment)} @ ${loan.annualRate}%` },
+    { label: "Principal paid", value: formatMoney(state.paidPrincipal) },
+    { label: "Interest paid", value: formatMoney(state.paidInterest) },
+    { label: "Interest remaining", value: formatMoney(state.remainingInterest) },
+    {
+      label: "Payoff",
+      value: state.isPaidOff ? "Paid off 🎉" : state.payoffDate ? formatDate(state.payoffDate) : "—",
+    },
+  ];
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <Link href="/loans" className="text-sm text-emerald-600 hover:underline">
+            ← Loans
+          </Link>
+          <h1 className="page-title mt-1">{loan.name}</h1>
+          <p className="text-sm text-zinc-500">
+            {loan.lender && `${loan.lender.name} · `}
+            {formatMoney(loan.principal)} over {loan.termMonths} months · pays from{" "}
+            {loan.paymentAccount.name} · liability {loan.liabilityAccount.name}
+          </p>
+        </div>
+        <form action={deleteLoan}>
+          <input type="hidden" name="id" value={loan.id} />
+          <ConfirmButton message={`Delete loan ${loan.name}? Posted payment entries stay in the ledger.`}>
+            Delete loan
+          </ConfirmButton>
+        </form>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-6">
+        {cards.map((card) => (
+          <div key={card.label} className="card p-4">
+            <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">{card.label}</p>
+            <p className="mt-1 font-mono text-sm font-semibold">{card.value}</p>
+          </div>
+        ))}
+      </div>
+
+      {!state.isPaidOff && (
+        <div className="card">
+          <h2 className="mb-3 font-semibold">Record this month&apos;s payment</h2>
+          <LoanPaymentForm
+            loanId={loan.id}
+            balance={state.balance}
+            annualRate={loan.annualRate}
+            payment={loan.payment}
+            defaultDate={toDateInput(todayUTC())}
+          />
+        </div>
+      )}
+
+      <div className="card">
+        <h2 className="mb-1 font-semibold">Payoff curve</h2>
+        <PayoffChart
+          principal={loan.principal}
+          baseline={state.baseline}
+          historyBalances={historyBalances}
+          projected={state.projected}
+        />
+      </div>
+
+      {!state.isPaidOff && (
+        <>
+          <div className="card">
+            <h2 className="mb-1 font-semibold">Principal vs interest, each remaining payment</h2>
+            <SplitChart projected={state.projected} />
+          </div>
+
+          <div className="card">
+            <h2 className="mb-3 font-semibold">What if I pay extra principal?</h2>
+            <LoanWhatIf
+              balance={state.balance}
+              annualRate={loan.annualRate}
+              payment={loan.payment}
+              nextDateISO={state.nextDate.toISOString()}
+              remainingInterest={state.remainingInterest}
+              remainingMonths={state.projected.length}
+              paymentsMade={loan.payments.length}
+              termMonths={loan.termMonths}
+            />
+          </div>
+        </>
+      )}
+
+      {loan.payments.length > 0 && (
+        <div className="card">
+          <h2 className="mb-3 font-semibold">Recorded payments</h2>
+          <table className="w-full">
+            <thead>
+              <tr>
+                <th className="th">#</th>
+                <th className="th">Date</th>
+                <th className="th text-right">Principal</th>
+                <th className="th text-right">Interest</th>
+                <th className="th text-right">Extra incl.</th>
+                <th className="th text-right">Total</th>
+                <th className="th" />
+              </tr>
+            </thead>
+            <tbody>
+              {loan.payments.map((payment, i) => (
+                <tr key={payment.id}>
+                  <td className="td text-zinc-500">{i + 1}</td>
+                  <td className="td whitespace-nowrap">
+                    {payment.entryId ? (
+                      <Link href={`/transactions/${payment.entryId}`} className="hover:underline">
+                        {formatDate(payment.date)}
+                      </Link>
+                    ) : (
+                      formatDate(payment.date)
+                    )}
+                  </td>
+                  <td className="td text-right font-mono">{formatMoney(payment.principal)}</td>
+                  <td className="td text-right font-mono">{formatMoney(payment.interest)}</td>
+                  <td className="td text-right font-mono text-zinc-500">
+                    {payment.extra ? formatMoney(payment.extra) : ""}
+                  </td>
+                  <td className="td text-right font-mono">{formatMoney(payment.principal + payment.interest)}</td>
+                  <td className="td text-right">
+                    <form action={deleteLoanPayment}>
+                      <input type="hidden" name="id" value={payment.id} />
+                      <ConfirmButton message="Delete this payment and its ledger entry?">✕</ConfirmButton>
+                    </form>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {state.projected.length > 0 && (
+        <div className="card">
+          <h2 className="mb-3 font-semibold">Amortization schedule (projected)</h2>
+          <div className="max-h-96 overflow-y-auto">
+            <table className="w-full">
+              <thead className="sticky top-0 bg-white dark:bg-zinc-900">
+                <tr>
+                  <th className="th">#</th>
+                  <th className="th">Date</th>
+                  <th className="th text-right">Payment</th>
+                  <th className="th text-right">Principal</th>
+                  <th className="th text-right">Interest</th>
+                  <th className="th text-right">Balance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {state.projected.map((row) => (
+                  <tr key={row.n}>
+                    <td className="td text-zinc-500">{row.n}</td>
+                    <td className="td whitespace-nowrap">{formatDate(row.date)}</td>
+                    <td className="td text-right font-mono">{formatMoney(row.payment)}</td>
+                    <td className="td text-right font-mono">{formatMoney(row.principal)}</td>
+                    <td className="td text-right font-mono">{formatMoney(row.interest)}</td>
+                    <td className="td text-right font-mono">{formatMoney(row.balance)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -24,6 +24,45 @@ model Business {
   invoices  Invoice[]
   recurring RecurringTransaction[]
   documents Document[]
+  loans     Loan[]
+}
+
+model Loan {
+  id                 String   @id @default(cuid())
+  businessId         String
+  name               String
+  lenderId           String?
+  principal          Int // original principal, cents
+  annualRate         Float // percent, e.g. 6.5
+  termMonths         Int
+  firstPaymentDate   DateTime
+  payment            Int // standard monthly payment, cents
+  liabilityAccountId String
+  interestAccountId  String
+  paymentAccountId   String
+  notes              String?
+  createdAt          DateTime @default(now())
+
+  business         Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  lender           Contact?      @relation(fields: [lenderId], references: [id], onDelete: SetNull)
+  liabilityAccount Account       @relation("LoanLiabilityAccount", fields: [liabilityAccountId], references: [id])
+  interestAccount  Account       @relation("LoanInterestAccount", fields: [interestAccountId], references: [id])
+  paymentAccount   Account       @relation("LoanPaymentAccount", fields: [paymentAccountId], references: [id])
+  payments         LoanPayment[]
+}
+
+model LoanPayment {
+  id        String   @id @default(cuid())
+  loanId    String
+  date      DateTime
+  interest  Int      @default(0) // cents
+  principal Int      @default(0) // cents, includes extra principal
+  extra     Int      @default(0) // cents, portion of principal beyond the scheduled amount
+  entryId   String?  @unique
+  createdAt DateTime @default(now())
+
+  loan  Loan          @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  entry JournalEntry? @relation(fields: [entryId], references: [id], onDelete: SetNull)
 }
 
 // Line-level reporting dimension (department, location, product line, …),
@@ -59,6 +98,9 @@ model Account {
   lines    JournalLine[]
   recurringLines RecurringLine[]
   invoiceItems   InvoiceItem[]
+  loansAsLiability Loan[] @relation("LoanLiabilityAccount")
+  loansAsInterest  Loan[] @relation("LoanInterestAccount")
+  loansAsPayment   Loan[] @relation("LoanPaymentAccount")
 
   @@index([businessId, type])
 }
@@ -75,12 +117,13 @@ model JournalEntry {
   recurringId String?
   createdAt   DateTime @default(now())
 
-  business  Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  invoice   Invoice?              @relation(fields: [invoiceId], references: [id])
-  recurring RecurringTransaction? @relation(fields: [recurringId], references: [id])
-  lines     JournalLine[]
-  tags      EntryTag[]
-  documents Document[]
+  business    Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  invoice     Invoice?              @relation(fields: [invoiceId], references: [id])
+  recurring   RecurringTransaction? @relation(fields: [recurringId], references: [id])
+  lines       JournalLine[]
+  tags        EntryTag[]
+  documents   Document[]
+  loanPayment LoanPayment?
 
   @@index([businessId, date])
 }
@@ -150,6 +193,7 @@ model Contact {
   invoices       Invoice[]
   lines          JournalLine[]
   recurringLines RecurringLine[]
+  loans          Loan[]
 
   @@index([businessId, kind])
 }

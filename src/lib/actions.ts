@@ -6,8 +6,9 @@ import { cookies } from "next/headers";
 import { prisma } from "./db";
 import { BUSINESS_COOKIE, requireBusiness } from "./business";
 import { seedChartOfAccounts } from "./coa";
-import { parseDate } from "./money";
+import { parseDate, parseMoney } from "./money";
 import { postOccurrence, runDueRecurring, advanceDate } from "./recurring";
+import { standardPayment, monthlyRate } from "./loans";
 
 function str(formData: FormData, key: string): string {
   return String(formData.get(key) ?? "").trim();
@@ -570,6 +571,187 @@ export async function runAllDueRecurring() {
   revalidatePath("/recurring");
   revalidatePath("/transactions");
   revalidatePath("/");
+}
+
+// --------------------------------------------------------------------- loans
+
+async function findOrCreateAccount(
+  businessId: string,
+  where: { name: string; type: string },
+  extra: { code?: string; parentName?: string; taxLine?: string } = {}
+) {
+  const existing = await prisma.account.findFirst({
+    where: { businessId, name: where.name, type: where.type },
+  });
+  if (existing) return existing;
+  let parentId: string | null = null;
+  if (extra.parentName) {
+    const parent = await prisma.account.findFirst({
+      where: { businessId, name: extra.parentName, type: where.type },
+    });
+    parentId = parent?.id ?? null;
+  }
+  return prisma.account.create({
+    data: {
+      businessId,
+      name: where.name,
+      type: where.type,
+      code: extra.code ?? null,
+      taxLine: extra.taxLine ?? null,
+      parentId,
+    },
+  });
+}
+
+export async function createLoan(formData: FormData) {
+  const business = await requireBusiness();
+  const name = str(formData, "name");
+  if (!name) throw new Error("Loan name is required");
+  const principal = parseMoney(str(formData, "principal"));
+  const annualRate = Number(str(formData, "annualRate") || 0);
+  const termMonths = Math.round(Number(str(formData, "termMonths") || 0));
+  if (principal <= 0 || termMonths <= 0 || annualRate < 0)
+    throw new Error("Principal, rate, and term must be positive");
+  const paymentOverride = str(formData, "payment");
+  const payment = paymentOverride
+    ? parseMoney(paymentOverride)
+    : standardPayment(principal, annualRate, termMonths);
+
+  let liabilityAccountId = str(formData, "liabilityAccountId");
+  if (!liabilityAccountId) {
+    const account = await findOrCreateAccount(
+      business.id,
+      { name: `Loan — ${name}`, type: "LIABILITY" },
+      { parentName: "Loans Payable" }
+    );
+    liabilityAccountId = account.id;
+  }
+  let interestAccountId = str(formData, "interestAccountId");
+  if (!interestAccountId) {
+    const account = await findOrCreateAccount(
+      business.id,
+      { name: "Interest Expense", type: "EXPENSE" },
+      { code: "6150", taxLine: "Interest (Line 16)" }
+    );
+    interestAccountId = account.id;
+  }
+  const paymentAccountId = str(formData, "paymentAccountId");
+  if (!paymentAccountId) throw new Error("Choose the account payments come from");
+
+  const loan = await prisma.loan.create({
+    data: {
+      businessId: business.id,
+      name,
+      lenderId: str(formData, "lenderId") || null,
+      principal,
+      annualRate,
+      termMonths,
+      firstPaymentDate: parseDate(str(formData, "firstPaymentDate")),
+      payment,
+      liabilityAccountId,
+      interestAccountId,
+      paymentAccountId,
+      notes: str(formData, "notes") || null,
+    },
+  });
+
+  // Optionally post the loan funds arriving (new borrowing, not an existing loan).
+  if (str(formData, "postDisbursement") === "on") {
+    await prisma.journalEntry.create({
+      data: {
+        businessId: business.id,
+        date: parseDate(str(formData, "firstPaymentDate")),
+        memo: `Loan disbursement — ${name}`,
+        lines: {
+          create: [
+            { accountId: paymentAccountId, contactId: loan.lenderId, debit: principal, credit: 0 },
+            { accountId: liabilityAccountId, contactId: loan.lenderId, debit: 0, credit: principal },
+          ],
+        },
+      },
+    });
+  }
+
+  revalidatePath("/loans");
+  redirect(`/loans/${loan.id}`);
+}
+
+export async function deleteLoan(formData: FormData) {
+  // Posted payment entries stay in the ledger (LoanPayment rows cascade away).
+  await prisma.loan.delete({ where: { id: str(formData, "id") } });
+  revalidatePath("/loans");
+  redirect("/loans");
+}
+
+export async function recordLoanPayment(
+  loanId: string,
+  input: { date: string; extra: number; principalOnly: boolean }
+): Promise<{ error?: string }> {
+  const loan = await prisma.loan.findUniqueOrThrow({
+    where: { id: loanId },
+    include: { payments: true },
+  });
+  const paidPrincipal = loan.payments.reduce((s, p) => s + p.principal, 0);
+  const balance = loan.principal - paidPrincipal;
+  if (balance <= 0) return { error: "This loan is already paid off" };
+  if (input.extra < 0) return { error: "Extra principal cannot be negative" };
+
+  let interest = 0;
+  let scheduledPrincipal = 0;
+  let extra = 0;
+  if (input.principalOnly) {
+    if (input.extra <= 0) return { error: "Enter the principal amount to apply" };
+    extra = Math.min(input.extra, balance);
+  } else {
+    interest = Math.round(balance * monthlyRate(loan.annualRate));
+    scheduledPrincipal = Math.min(Math.max(loan.payment - interest, 0), balance);
+    if (scheduledPrincipal <= 0 && interest >= loan.payment)
+      return { error: "Payment does not cover interest — check the rate and payment" };
+    extra = Math.min(input.extra, balance - scheduledPrincipal);
+  }
+  const principal = scheduledPrincipal + extra;
+  const total = principal + interest;
+
+  const entry = await prisma.journalEntry.create({
+    data: {
+      businessId: loan.businessId,
+      date: parseDate(input.date),
+      memo: input.principalOnly
+        ? `Extra principal — ${loan.name}`
+        : `Loan payment — ${loan.name}`,
+      lines: {
+        create: [
+          { accountId: loan.liabilityAccountId, contactId: loan.lenderId, debit: principal, credit: 0 },
+          ...(interest > 0
+            ? [{ accountId: loan.interestAccountId, contactId: loan.lenderId, debit: interest, credit: 0 }]
+            : []),
+          { accountId: loan.paymentAccountId, contactId: loan.lenderId, debit: 0, credit: total },
+        ],
+      },
+    },
+  });
+  await prisma.loanPayment.create({
+    data: { loanId, date: parseDate(input.date), interest, principal, extra, entryId: entry.id },
+  });
+  revalidatePath(`/loans/${loanId}`);
+  revalidatePath("/loans");
+  revalidatePath("/transactions");
+  revalidatePath("/");
+  return {};
+}
+
+export async function deleteLoanPayment(formData: FormData) {
+  const id = str(formData, "id");
+  const payment = await prisma.loanPayment.findUniqueOrThrow({ where: { id } });
+  await prisma.$transaction([
+    prisma.loanPayment.delete({ where: { id } }),
+    ...(payment.entryId
+      ? [prisma.journalEntry.delete({ where: { id: payment.entryId } })]
+      : []),
+  ]);
+  revalidatePath(`/loans/${payment.loanId}`);
+  revalidatePath("/loans");
+  revalidatePath("/transactions");
 }
 
 // ----------------------------------------------------------------- documents
