@@ -8,9 +8,11 @@ import { parseMoney, formatMoney } from "../lib/money";
 export type AccountOption = { id: string; label: string; type: string };
 export type TagOption = { id: string; name: string; color: string };
 export type ClassOption = { id: string; name: string };
+export type ContactOption = { id: string; name: string; kind: string };
 export type LineState = {
   accountId: string;
   classId: string;
+  contactId: string;
   description: string;
   debit: string;
   credit: string;
@@ -19,10 +21,47 @@ export type LineState = {
 const emptyLine = (): LineState => ({
   accountId: "",
   classId: "",
+  contactId: "",
   description: "",
   debit: "",
   credit: "",
 });
+
+export function ContactSelect({
+  contacts,
+  value,
+  onChange,
+}: {
+  contacts: ContactOption[];
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  const customers = contacts.filter((c) => c.kind === "CUSTOMER");
+  const vendors = contacts.filter((c) => c.kind === "VENDOR");
+  return (
+    <select className="input" value={value} onChange={(e) => onChange(e.target.value)}>
+      <option value="">— no name —</option>
+      {customers.length > 0 && (
+        <optgroup label="Customers">
+          {customers.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </optgroup>
+      )}
+      {vendors.length > 0 && (
+        <optgroup label="Vendors">
+          {vendors.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.name}
+            </option>
+          ))}
+        </optgroup>
+      )}
+    </select>
+  );
+}
 
 function safeCents(value: string): number {
   try {
@@ -36,6 +75,7 @@ export function EntryForm({
   accounts,
   tags,
   classes,
+  contacts,
   defaultDate,
   entryId,
   initial,
@@ -43,11 +83,13 @@ export function EntryForm({
   accounts: AccountOption[];
   tags: TagOption[];
   classes: ClassOption[];
+  contacts: ContactOption[];
   defaultDate: string;
   entryId?: string;
   initial?: { date: string; memo: string; reference: string; tagIds: string[]; lines: LineState[] };
 }) {
   const hasClasses = classes.length > 0;
+  const hasContacts = contacts.length > 0;
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -76,6 +118,7 @@ export function EntryForm({
       lines: lines.map((l) => ({
         accountId: l.accountId,
         classId: l.classId || undefined,
+        contactId: l.contactId || undefined,
         description: l.description || undefined,
         debit: safeCents(l.debit) || 0,
         credit: safeCents(l.credit) || 0,
@@ -122,8 +165,9 @@ export function EntryForm({
       <table className="w-full">
         <thead>
           <tr>
-            <th className="th w-2/5">Account</th>
+            <th className="th w-1/3">Account</th>
             <th className="th">Description</th>
+            {hasContacts && <th className="th w-36">Name</th>}
             {hasClasses && <th className="th w-36">Class</th>}
             <th className="th w-28 text-right">Debit</th>
             <th className="th w-28 text-right">Credit</th>
@@ -154,6 +198,15 @@ export function EntryForm({
                   onChange={(e) => setLine(i, { description: e.target.value })}
                 />
               </td>
+              {hasContacts && (
+                <td className="td">
+                  <ContactSelect
+                    contacts={contacts}
+                    value={line.contactId}
+                    onChange={(contactId) => setLine(i, { contactId })}
+                  />
+                </td>
+              )}
               {hasClasses && (
                 <td className="td">
                   <select
@@ -204,7 +257,7 @@ export function EntryForm({
         </tbody>
         <tfoot>
           <tr>
-            <td className="td font-medium" colSpan={hasClasses ? 3 : 2}>
+            <td className="td font-medium" colSpan={2 + (hasClasses ? 1 : 0) + (hasContacts ? 1 : 0)}>
               <button type="button" className="btn btn-sm" onClick={() => setLines((p) => [...p, emptyLine()])}>
                 + Add line
               </button>

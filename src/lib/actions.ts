@@ -180,6 +180,7 @@ export async function deleteClass(formData: FormData) {
 export type EntryLineInput = {
   accountId: string;
   classId?: string;
+  contactId?: string;
   description?: string;
   debit: number; // cents
   credit: number; // cents
@@ -196,7 +197,7 @@ export type EntryInput = {
 function validateEntry(input: EntryInput) {
   const lines = input.lines
     .filter((l) => l.accountId && (l.debit !== 0 || l.credit !== 0))
-    .map((l) => ({ ...l, classId: l.classId || undefined }));
+    .map((l) => ({ ...l, classId: l.classId || undefined, contactId: l.contactId || undefined }));
   if (lines.length < 2) return { error: "An entry needs at least two non-zero lines" };
   for (const line of lines) {
     if (line.debit < 0 || line.credit < 0) return { error: "Amounts must be positive" };
@@ -267,21 +268,56 @@ export async function deleteEntry(formData: FormData) {
   redirect("/transactions");
 }
 
-// ----------------------------------------------------------------- customers
+// ------------------------------------------------------------------ contacts
 
-export async function createCustomer(formData: FormData) {
+function contactData(formData: FormData) {
+  const firstName = str(formData, "firstName") || null;
+  const lastName = str(formData, "lastName") || null;
+  const company = str(formData, "company") || null;
+  const explicit = str(formData, "name");
+  const name =
+    explicit || company || [firstName, lastName].filter(Boolean).join(" ").trim();
+  return {
+    kind: str(formData, "kind") === "VENDOR" ? "VENDOR" : "CUSTOMER",
+    name,
+    firstName,
+    lastName,
+    company,
+    email: str(formData, "email") || null,
+    phone: str(formData, "phone") || null,
+    address: str(formData, "address") || null,
+    city: str(formData, "city") || null,
+    state: str(formData, "state") || null,
+    zip: str(formData, "zip") || null,
+    notes: str(formData, "notes") || null,
+  };
+}
+
+export async function createContact(formData: FormData) {
   const business = await requireBusiness();
-  const name = str(formData, "name");
-  if (!name) throw new Error("Customer name is required");
-  await prisma.customer.create({
-    data: {
-      businessId: business.id,
-      name,
-      email: str(formData, "email") || null,
-      address: str(formData, "address") || null,
-    },
-  });
-  revalidatePath("/invoices");
+  const data = contactData(formData);
+  if (!data.name) throw new Error("Provide a display name, company, or first/last name");
+  await prisma.contact.create({ data: { businessId: business.id, ...data } });
+  revalidatePath("/contacts");
+  redirect("/contacts");
+}
+
+export async function updateContact(id: string, formData: FormData) {
+  const data = contactData(formData);
+  if (!data.name) throw new Error("Provide a display name, company, or first/last name");
+  await prisma.contact.update({ where: { id }, data });
+  revalidatePath("/contacts");
+  redirect("/contacts");
+}
+
+export async function deleteContact(formData: FormData) {
+  const id = str(formData, "id");
+  const invoiceCount = await prisma.invoice.count({ where: { customerId: id } });
+  if (invoiceCount > 0)
+    throw new Error("Contact has invoices and cannot be deleted");
+  // Journal/recurring lines keep their amounts; contactId is nulled via SetNull.
+  await prisma.contact.delete({ where: { id } });
+  revalidatePath("/contacts");
 }
 
 // ------------------------------------------------------------------ invoices
@@ -310,8 +346,8 @@ export async function createInvoice(input: InvoiceInput): Promise<{ error?: stri
 
   let customerId = input.customerId;
   if (!customerId && input.newCustomerName?.trim()) {
-    const customer = await prisma.customer.create({
-      data: { businessId: business.id, name: input.newCustomerName.trim() },
+    const customer = await prisma.contact.create({
+      data: { businessId: business.id, kind: "CUSTOMER", name: input.newCustomerName.trim() },
     });
     customerId = customer.id;
   }
@@ -373,10 +409,11 @@ export async function sendInvoice(formData: FormData) {
       invoiceId: invoice.id,
       lines: {
         create: [
-          { accountId: receivable.id, debit: invoice.total, credit: 0 },
+          { accountId: receivable.id, contactId: invoice.customerId, debit: invoice.total, credit: 0 },
           ...invoice.items.map((item) => ({
             accountId: item.accountId,
             classId: item.classId,
+            contactId: invoice.customerId,
             description: item.description,
             debit: 0,
             credit: item.amount,
@@ -410,8 +447,8 @@ export async function recordInvoicePayment(
       invoiceId: invoice.id,
       lines: {
         create: [
-          { accountId: input.accountId, debit: input.amount, credit: 0 },
-          { accountId: receivable.id, debit: 0, credit: input.amount },
+          { accountId: input.accountId, contactId: invoice.customerId, debit: input.amount, credit: 0 },
+          { accountId: receivable.id, contactId: invoice.customerId, debit: 0, credit: input.amount },
         ],
       },
     },
@@ -474,7 +511,7 @@ export async function createRecurring(input: RecurringInput): Promise<{ error?: 
   if (!input.name.trim()) return { error: "Name is required" };
   const lines = input.lines
     .filter((l) => l.accountId && (l.debit !== 0 || l.credit !== 0))
-    .map((l) => ({ ...l, classId: l.classId || undefined }));
+    .map((l) => ({ ...l, classId: l.classId || undefined, contactId: l.contactId || undefined }));
   if (lines.length < 2) return { error: "A recurring transaction needs at least two non-zero lines" };
   const totalDebit = lines.reduce((s, l) => s + l.debit, 0);
   const totalCredit = lines.reduce((s, l) => s + l.credit, 0);

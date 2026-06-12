@@ -109,8 +109,8 @@ async function main() {
     },
   });
 
-  const customer = await prisma.customer.create({
-    data: { businessId: business.id, name: "Globex Corp", email: "ap@globex.example" },
+  const customer = await prisma.contact.create({
+    data: { businessId: business.id, kind: "CUSTOMER", name: "Globex Corp", email: "ap@globex.example" },
   });
   await prisma.invoice.create({
     data: {

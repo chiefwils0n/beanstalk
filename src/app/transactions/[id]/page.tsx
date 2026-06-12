@@ -15,10 +15,11 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
   });
   if (!entry) notFound();
 
-  const [accounts, tags, classes] = await Promise.all([
+  const [accounts, tags, classes, contacts] = await Promise.all([
     prisma.account.findMany({ where: { businessId: entry.businessId } }),
     prisma.tag.findMany({ where: { businessId: entry.businessId }, orderBy: { name: "asc" } }),
     prisma.class.findMany({ where: { businessId: entry.businessId }, orderBy: { name: "asc" } }),
+    prisma.contact.findMany({ where: { businessId: entry.businessId }, orderBy: { name: "asc" } }),
   ]);
 
   return (
@@ -78,6 +79,7 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
         accounts={flattenAccounts(accounts)}
         tags={tags.map((t) => ({ id: t.id, name: t.name, color: t.color }))}
         classes={classes.map((c) => ({ id: c.id, name: c.name }))}
+        contacts={contacts.map((c) => ({ id: c.id, name: c.name, kind: c.kind }))}
         defaultDate={toDateInput(todayUTC())}
         entryId={entry.id}
         initial={{
@@ -88,6 +90,7 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
           lines: entry.lines.map((line) => ({
             accountId: line.accountId,
             classId: line.classId ?? "",
+            contactId: line.contactId ?? "",
             description: line.description ?? "",
             debit: line.debit ? (line.debit / 100).toFixed(2) : "",
             credit: line.credit ? (line.credit / 100).toFixed(2) : "",

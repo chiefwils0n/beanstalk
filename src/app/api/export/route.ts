@@ -103,23 +103,26 @@ export async function GET(request: NextRequest) {
     }
     case "general-ledger": {
       const accountId = params.get("account") || undefined;
+      const contactId = params.get("contact") || undefined;
       const lines = await prisma.journalLine.findMany({
         where: {
           accountId,
           classId,
+          contactId,
           entry: { businessId: business.id, status: "POSTED", date: { gte: from, lte: to } },
         },
-        include: { entry: true, account: true, class: true },
+        include: { entry: true, account: true, class: true, contact: true },
         orderBy: [{ entry: { date: "asc" } }],
       });
       filename = `general-ledger_${fromLabel}_${toDateInput(to)}.csv`;
       rows = [
-        ["Date", "Account", "Memo", "Reference", "Class", "Debit", "Credit"],
+        ["Date", "Account", "Memo", "Reference", "Name", "Class", "Debit", "Credit"],
         ...lines.map((line): (string | number)[] => [
           toDateInput(line.entry.date),
           line.account.name,
           line.description || line.entry.memo,
           line.entry.reference ?? "",
+          line.contact?.name ?? "",
           line.class?.name ?? "",
           line.debit,
           line.credit,

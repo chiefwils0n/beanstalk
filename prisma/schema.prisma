@@ -20,7 +20,7 @@ model Business {
   entries   JournalEntry[]
   tags      Tag[]
   classes   Class[]
-  customers Customer[]
+  contacts  Contact[]
   invoices  Invoice[]
   recurring RecurringTransaction[]
   documents Document[]
@@ -90,6 +90,7 @@ model JournalLine {
   entryId     String
   accountId   String
   classId     String?
+  contactId   String?
   description String?
   debit       Int     @default(0) // cents
   credit      Int     @default(0) // cents
@@ -97,9 +98,11 @@ model JournalLine {
   entry   JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
   account Account      @relation(fields: [accountId], references: [id])
   class   Class?       @relation(fields: [classId], references: [id], onDelete: SetNull)
+  contact Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
 
   @@index([accountId])
   @@index([classId])
+  @@index([contactId])
 }
 
 model Tag {
@@ -124,15 +127,31 @@ model EntryTag {
   @@id([entryId, tagId])
 }
 
-model Customer {
+// kind: CUSTOMER | VENDOR. `name` is the display name (company or person);
+// the detail fields are optional. Contacts can be linked to individual
+// journal lines for per-name reporting.
+model Contact {
   id         String  @id @default(cuid())
   businessId String
+  kind       String  @default("CUSTOMER")
   name       String
+  firstName  String?
+  lastName   String?
+  company    String?
   email      String?
+  phone      String?
   address    String?
+  city       String?
+  state      String?
+  zip        String?
+  notes      String?
 
-  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  invoices Invoice[]
+  business       Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  invoices       Invoice[]
+  lines          JournalLine[]
+  recurringLines RecurringLine[]
+
+  @@index([businessId, kind])
 }
 
 // status: DRAFT | SENT | PAID | VOID
@@ -149,7 +168,7 @@ model Invoice {
   createdAt  DateTime @default(now())
 
   business Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  customer Customer       @relation(fields: [customerId], references: [id])
+  customer Contact        @relation(fields: [customerId], references: [id])
   items    InvoiceItem[]
   entries  JournalEntry[]
   documents Document[]
@@ -196,6 +215,7 @@ model RecurringLine {
   recurringId String
   accountId   String
   classId     String?
+  contactId   String?
   description String?
   debit       Int     @default(0)
   credit      Int     @default(0)
@@ -203,6 +223,7 @@ model RecurringLine {
   recurring RecurringTransaction @relation(fields: [recurringId], references: [id], onDelete: Cascade)
   account   Account              @relation(fields: [accountId], references: [id])
   class     Class?               @relation(fields: [classId], references: [id], onDelete: SetNull)
+  contact   Contact?             @relation(fields: [contactId], references: [id], onDelete: SetNull)
 }
 
 // category: RECEIPT | CONTRACT | OTHER

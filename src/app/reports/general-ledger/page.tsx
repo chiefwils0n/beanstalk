@@ -7,7 +7,7 @@ import { formatMoney, formatDate, parseDate, toDateInput, todayUTC } from "../..
 export default async function GeneralLedgerPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string; account?: string; class?: string }>;
+  searchParams: Promise<{ from?: string; to?: string; account?: string; class?: string; contact?: string }>;
 }) {
   const business = await requireBusiness();
   const sp = await searchParams;
@@ -16,21 +16,24 @@ export default async function GeneralLedgerPage({
   const from = sp.from ? parseDate(sp.from) : undefined;
   const to = sp.to ? parseDate(sp.to) : today;
 
-  const [accounts, classes, lines] = await Promise.all([
+  const [accounts, classes, contacts, lines] = await Promise.all([
     prisma.account.findMany({ where: { businessId: business.id } }),
     prisma.class.findMany({ where: { businessId: business.id }, orderBy: { name: "asc" } }),
+    prisma.contact.findMany({ where: { businessId: business.id }, orderBy: { name: "asc" } }),
     prisma.journalLine.findMany({
       where: {
         accountId: sp.account || undefined,
         classId: sp.class || undefined,
+        contactId: sp.contact || undefined,
         entry: { businessId: business.id, status: "POSTED", date: { gte: from, lte: to } },
       },
-      include: { entry: true, account: true, class: true },
+      include: { entry: true, account: true, class: true, contact: true },
       orderBy: [{ entry: { date: "asc" } }, { entry: { createdAt: "asc" } }],
       take: 1000,
     }),
   ]);
   const hasClasses = classes.length > 0;
+  const hasContacts = contacts.length > 0;
 
   return (
     <div className="flex flex-col gap-6">
@@ -44,7 +47,7 @@ export default async function GeneralLedgerPage({
         </div>
         <a
           className="btn btn-sm"
-          href={`/api/export?report=general-ledger${from ? `&from=${toDateInput(from)}` : ""}&to=${toDateInput(to)}${sp.account ? `&account=${sp.account}` : ""}${sp.class ? `&class=${sp.class}` : ""}`}
+          href={`/api/export?report=general-ledger${from ? `&from=${toDateInput(from)}` : ""}&to=${toDateInput(to)}${sp.account ? `&account=${sp.account}` : ""}${sp.class ? `&class=${sp.class}` : ""}${sp.contact ? `&contact=${sp.contact}` : ""}`}
         >
           Export CSV
         </a>
@@ -62,6 +65,19 @@ export default async function GeneralLedgerPage({
             ))}
           </select>
         </div>
+        {hasContacts && (
+          <div>
+            <label className="label">Name</label>
+            <select name="contact" defaultValue={sp.contact ?? ""} className="input max-w-56">
+              <option value="">All names</option>
+              {contacts.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} ({c.kind.toLowerCase()})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         {hasClasses && (
           <div>
             <label className="label">Class</label>
@@ -93,6 +109,7 @@ export default async function GeneralLedgerPage({
               <th className="th">Date</th>
               <th className="th">Account</th>
               <th className="th">Memo</th>
+              {hasContacts && <th className="th">Name</th>}
               {hasClasses && <th className="th">Class</th>}
               <th className="th text-right">Debit</th>
               <th className="th text-right">Credit</th>
@@ -101,7 +118,7 @@ export default async function GeneralLedgerPage({
           <tbody>
             {lines.length === 0 && (
               <tr>
-                <td className="td text-zinc-500" colSpan={hasClasses ? 6 : 5}>
+                <td className="td text-zinc-500" colSpan={5 + (hasClasses ? 1 : 0) + (hasContacts ? 1 : 0)}>
                   No activity in this range.
                 </td>
               </tr>
@@ -123,6 +140,21 @@ export default async function GeneralLedgerPage({
                     {line.description || line.entry.memo}
                   </Link>
                 </td>
+                {hasContacts && (
+                  <td className="td">
+                    {line.contact ? (
+                      <Link
+                        href={`/reports/general-ledger?contact=${line.contactId}${sp.from ? `&from=${sp.from}` : ""}${sp.to ? `&to=${sp.to}` : ""}`}
+                        className="hover:text-emerald-600 hover:underline dark:hover:text-emerald-400"
+                        title={`Filter to ${line.contact.name}`}
+                      >
+                        {line.contact.name}
+                      </Link>
+                    ) : (
+                      ""
+                    )}
+                  </td>
+                )}
                 {hasClasses && (
                   <td className="td">
                     {line.class ? (
