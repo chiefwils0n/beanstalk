@@ -1,26 +1,28 @@
 "use client";
 
-import { ThemeProvider as NextThemesProvider, useTheme } from "next-themes";
 import { useEffect, useState } from "react";
-
-export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  return (
-    <NextThemesProvider attribute="class" defaultTheme="system" enableSystem>
-      {children}
-    </NextThemesProvider>
-  );
-}
+import { THEME_STORAGE_KEY } from "../lib/theme";
 
 export function ThemeToggle() {
-  const { resolvedTheme, setTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
-  if (!mounted) return <div className="h-8 w-20" />;
-  const dark = resolvedTheme === "dark";
+  const [dark, setDark] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    setDark(document.documentElement.classList.contains("dark"));
+  }, []);
+
+  if (dark === null) return <div className="h-7 w-full" />;
+
+  const toggle = () => {
+    const next = !dark;
+    document.documentElement.classList.toggle("dark", next);
+    localStorage.setItem(THEME_STORAGE_KEY, next ? "dark" : "light");
+    setDark(next);
+  };
+
   return (
     <button
       type="button"
-      onClick={() => setTheme(dark ? "light" : "dark")}
+      onClick={toggle}
       className="btn btn-sm w-full justify-center"
       title="Toggle theme"
     >
