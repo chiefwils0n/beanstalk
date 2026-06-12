@@ -572,7 +572,7 @@ export async function createRecurring(input: RecurringInput): Promise<{ error?: 
       lines: { create: lines },
     },
   });
-  revalidatePath("/recurring");
+  revalidatePath("/settings/recurring");
   return {};
 }
 
@@ -583,12 +583,12 @@ export async function toggleRecurring(formData: FormData) {
     where: { id },
     data: { isActive: !recurring.isActive },
   });
-  revalidatePath("/recurring");
+  revalidatePath("/settings/recurring");
 }
 
 export async function deleteRecurring(formData: FormData) {
   await prisma.recurringTransaction.delete({ where: { id: str(formData, "id") } });
-  revalidatePath("/recurring");
+  revalidatePath("/settings/recurring");
 }
 
 /** Post the next occurrence immediately and advance the schedule. */
@@ -603,14 +603,14 @@ export async function postRecurringNow(formData: FormData) {
       lastRun: new Date(),
     },
   });
-  revalidatePath("/recurring");
+  revalidatePath("/settings/recurring");
   revalidatePath("/transactions");
 }
 
 export async function runAllDueRecurring() {
   const business = await requireBusiness();
   await runDueRecurring(business.id);
-  revalidatePath("/recurring");
+  revalidatePath("/settings/recurring");
   revalidatePath("/transactions");
   revalidatePath("/");
 }

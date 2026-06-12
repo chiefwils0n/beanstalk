@@ -1,15 +1,15 @@
 import Link from "next/link";
-import { prisma } from "../../lib/db";
-import { requireBusiness } from "../../lib/business";
+import { prisma } from "../../../lib/db";
+import { requireBusiness } from "../../../lib/business";
 import {
   toggleRecurring,
   deleteRecurring,
   postRecurringNow,
   runAllDueRecurring,
-} from "../../lib/actions";
-import { formatMoney, formatDate, todayUTC } from "../../lib/money";
-import { FREQUENCY_LABELS, type Frequency } from "../../lib/types";
-import { ConfirmButton } from "../../components/ConfirmButton";
+} from "../../../lib/actions";
+import { formatMoney, formatDate, todayUTC } from "../../../lib/money";
+import { FREQUENCY_LABELS, type Frequency } from "../../../lib/types";
+import { ConfirmButton } from "../../../components/ConfirmButton";
 
 export default async function RecurringPage() {
   const business = await requireBusiness();
@@ -24,14 +24,14 @@ export default async function RecurringPage() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
-        <h1 className="page-title">Recurring transactions</h1>
+        <h2 className="text-xl font-bold tracking-tight">Recurring transactions</h2>
         <div className="flex gap-2">
           {dueCount > 0 && (
             <form action={runAllDueRecurring}>
               <button className="btn">Post all due ({dueCount})</button>
             </form>
           )}
-          <Link href="/recurring/new" className="btn btn-primary">
+          <Link href="/settings/recurring/new" className="btn btn-primary">
             + New recurring
           </Link>
         </div>

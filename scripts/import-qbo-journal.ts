@@ -217,9 +217,9 @@ async function main() {
     let prefix = "";
     for (let i = 0; i < segments.length; i++) {
       prefix = prefix ? `${prefix}:${segments[i]}` : segments[i];
-      let id = accountByPath.get(prefix);
+      let id: string | undefined = accountByPath.get(prefix);
       if (!id) {
-        const created = await prisma.account.create({
+        const newAccount: { id: string } = await prisma.account.create({
           data: {
             businessId: business.id,
             name: segments[i],
@@ -228,7 +228,7 @@ async function main() {
             description: "Created by QBO journal import — verify the account type",
           },
         });
-        id = created.id;
+        id = newAccount.id;
         accountByPath.set(prefix, id);
       }
       parentId = id;
@@ -238,10 +238,10 @@ async function main() {
     const segments = name.split(":").map((s) => s.trim());
     const display = segments[segments.length - 1];
     if (contactByName.has(display.toLowerCase())) continue;
-    const created = await prisma.contact.create({
+    const newContact = await prisma.contact.create({
       data: { businessId: business.id, name: display, notes: "Created by QBO journal import" },
     });
-    contactByName.set(display.toLowerCase(), created.id);
+    contactByName.set(display.toLowerCase(), newContact.id);
   }
 
   const tag = await prisma.tag.upsert({

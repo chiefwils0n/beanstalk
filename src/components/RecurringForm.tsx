@@ -80,7 +80,7 @@ export function RecurringForm({
         setError(result.error);
         return;
       }
-      router.push("/recurring");
+      router.push("/settings/recurring");
       router.refresh();
     });
   };
@@ -145,12 +145,12 @@ export function RecurringForm({
       <table className="w-full">
         <thead>
           <tr>
-            <th className="th w-1/3">Account</th>
+            <th className="th w-[26%]">Account</th>
             <th className="th">Description</th>
-            {hasContacts && <th className="th w-36">Name</th>}
-            {hasClasses && <th className="th w-36">Class</th>}
-            <th className="th w-28 text-right">Debit</th>
-            <th className="th w-28 text-right">Credit</th>
+            {hasContacts && <th className="th w-[16%]">Name</th>}
+            {hasClasses && <th className="th w-[13%]">Class</th>}
+            <th className="th w-36 text-right">Debit</th>
+            <th className="th w-36 text-right">Credit</th>
             <th className="th w-8" />
           </tr>
         </thead>

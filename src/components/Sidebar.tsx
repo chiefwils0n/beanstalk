@@ -11,7 +11,6 @@ const NAV_MAIN: [string, string][] = [
   ["Documents", "/documents"],
   ["Invoices", "/invoices"],
   ["Loans", "/loans"],
-  ["Recurring", "/recurring"],
   ["Reports", "/reports"],
   ["Transactions", "/transactions"],
 ];
