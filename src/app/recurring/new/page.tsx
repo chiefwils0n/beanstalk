@@ -1,6 +1,7 @@
 import { prisma } from "../../../lib/db";
 import { requireBusiness } from "../../../lib/business";
 import { flattenAccounts } from "../../../lib/accounting";
+import { flattenContacts } from "../../../lib/contacts";
 import { toDateInput, todayUTC } from "../../../lib/money";
 import { RecurringForm } from "../../../components/RecurringForm";
 
@@ -9,7 +10,11 @@ export default async function NewRecurringPage() {
   const [accounts, classes, contacts] = await Promise.all([
     prisma.account.findMany({ where: { businessId: business.id, isArchived: false } }),
     prisma.class.findMany({ where: { businessId: business.id }, orderBy: { name: "asc" } }),
-    prisma.contact.findMany({ where: { businessId: business.id }, orderBy: { name: "asc" } }),
+    prisma.contact.findMany({
+      where: { businessId: business.id },
+      include: { type: true },
+      orderBy: { name: "asc" },
+    }),
   ]);
 
   return (
@@ -22,7 +27,7 @@ export default async function NewRecurringPage() {
       <RecurringForm
         accounts={flattenAccounts(accounts)}
         classes={classes.map((c) => ({ id: c.id, name: c.name }))}
-        contacts={contacts.map((c) => ({ id: c.id, name: c.name, kind: c.kind }))}
+        contacts={flattenContacts(contacts)}
         defaultDate={toDateInput(todayUTC())}
       />
     </div>

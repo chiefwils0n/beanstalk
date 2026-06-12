@@ -8,7 +8,7 @@ import { parseMoney, formatMoney } from "../lib/money";
 export type AccountOption = { id: string; label: string; type: string };
 export type TagOption = { id: string; name: string; color: string };
 export type ClassOption = { id: string; name: string };
-export type ContactOption = { id: string; name: string; kind: string };
+export type ContactOption = { id: string; name: string; typeName: string | null; depth: number };
 export type LineState = {
   accountId: string;
   classId: string;
@@ -36,29 +36,25 @@ export function ContactSelect({
   value: string;
   onChange: (id: string) => void;
 }) {
-  const customers = contacts.filter((c) => c.kind === "CUSTOMER");
-  const vendors = contacts.filter((c) => c.kind === "VENDOR");
+  // Group by type, preserving the tree order within each group.
+  const groups = new Map<string, ContactOption[]>();
+  for (const contact of contacts) {
+    const key = contact.typeName ?? "Other";
+    groups.set(key, [...(groups.get(key) ?? []), contact]);
+  }
   return (
     <select className="input" value={value} onChange={(e) => onChange(e.target.value)}>
       <option value="">— no name —</option>
-      {customers.length > 0 && (
-        <optgroup label="Customers">
-          {customers.map((c) => (
+      {[...groups.entries()].map(([typeName, list]) => (
+        <optgroup key={typeName} label={typeName}>
+          {list.map((c) => (
             <option key={c.id} value={c.id}>
+              {" ".repeat(c.depth * 2)}
               {c.name}
             </option>
           ))}
         </optgroup>
-      )}
-      {vendors.length > 0 && (
-        <optgroup label="Vendors">
-          {vendors.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
-          ))}
-        </optgroup>
-      )}
+      ))}
     </select>
   );
 }

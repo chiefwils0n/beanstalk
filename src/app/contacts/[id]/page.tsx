@@ -7,10 +7,15 @@ import { ContactFields } from "../../../components/ContactFields";
 
 export default async function ContactPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const contact = await prisma.contact.findUnique({ where: { id } });
+  const contact = await prisma.contact.findUnique({
+    where: { id },
+    include: { type: true, children: true, parent: true },
+  });
   if (!contact) notFound();
 
-  const [lines, invoices] = await Promise.all([
+  const [types, siblings, lines, invoices] = await Promise.all([
+    prisma.contactType.findMany({ where: { businessId: contact.businessId }, orderBy: { name: "asc" } }),
+    prisma.contact.findMany({ where: { businessId: contact.businessId }, orderBy: { name: "asc" } }),
     prisma.journalLine.findMany({
       where: { contactId: id, entry: { status: "POSTED" } },
       include: { entry: true, account: true },
@@ -32,16 +37,46 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
         </Link>
         <h1 className="page-title mt-1">
           {contact.name}
-          <span className="badge ml-2 bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
-            {contact.kind.toLowerCase()}
-          </span>
+          {contact.type && (
+            <span className="badge ml-2 bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+              {contact.type.name.toLowerCase()}
+            </span>
+          )}
         </h1>
+        {contact.parent && (
+          <p className="text-sm text-zinc-500">
+            Nested under{" "}
+            <Link href={`/contacts/${contact.parent.id}`} className="text-emerald-600 hover:underline">
+              {contact.parent.name}
+            </Link>
+          </p>
+        )}
       </div>
+
+      {contact.children.length > 0 && (
+        <div className="card">
+          <h2 className="mb-2 font-semibold">Nested contacts</h2>
+          <ul className="text-sm">
+            {contact.children.map((child) => (
+              <li key={child.id}>
+                └{" "}
+                <Link href={`/contacts/${child.id}`} className="text-emerald-600 hover:underline">
+                  {child.name}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="card">
         <h2 className="mb-3 font-semibold">Details</h2>
         <form action={updateContact.bind(null, id)}>
-          <ContactFields contact={contact} />
+          <ContactFields
+            contact={contact}
+            types={types}
+            parents={siblings.map((s) => ({ id: s.id, name: s.name }))}
+          />
           <button className="btn btn-primary mt-4">Save</button>
         </form>
       </div>

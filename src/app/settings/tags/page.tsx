@@ -1,7 +1,7 @@
-import { prisma } from "../../lib/db";
-import { requireBusiness } from "../../lib/business";
-import { createTag, updateTag, deleteTag } from "../../lib/actions";
-import { ConfirmButton } from "../../components/ConfirmButton";
+import { prisma } from "../../../lib/db";
+import { requireBusiness } from "../../../lib/business";
+import { createTag, updateTag, deleteTag } from "../../../lib/actions";
+import { ConfirmButton } from "../../../components/ConfirmButton";
 
 export default async function TagsPage() {
   const business = await requireBusiness();
@@ -13,7 +13,6 @@ export default async function TagsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="page-title">Tags</h1>
       <p className="text-sm text-zinc-500 dark:text-zinc-400">
         Tag transactions to track projects, clients, locations, or anything else across
         accounts. Filter the transaction list by tag at any time.

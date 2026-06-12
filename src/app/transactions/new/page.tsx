@@ -1,6 +1,7 @@
 import { prisma } from "../../../lib/db";
 import { requireBusiness } from "../../../lib/business";
 import { flattenAccounts } from "../../../lib/accounting";
+import { flattenContacts } from "../../../lib/contacts";
 import { toDateInput, todayUTC } from "../../../lib/money";
 import { EntryForm } from "../../../components/EntryForm";
 
@@ -10,7 +11,11 @@ export default async function NewTransactionPage() {
     prisma.account.findMany({ where: { businessId: business.id, isArchived: false } }),
     prisma.tag.findMany({ where: { businessId: business.id }, orderBy: { name: "asc" } }),
     prisma.class.findMany({ where: { businessId: business.id }, orderBy: { name: "asc" } }),
-    prisma.contact.findMany({ where: { businessId: business.id }, orderBy: { name: "asc" } }),
+    prisma.contact.findMany({
+      where: { businessId: business.id },
+      include: { type: true },
+      orderBy: { name: "asc" },
+    }),
   ]);
 
   return (
@@ -24,7 +29,7 @@ export default async function NewTransactionPage() {
         accounts={flattenAccounts(accounts)}
         tags={tags.map((t) => ({ id: t.id, name: t.name, color: t.color }))}
         classes={classes.map((c) => ({ id: c.id, name: c.name }))}
-        contacts={contacts.map((c) => ({ id: c.id, name: c.name, kind: c.kind }))}
+        contacts={flattenContacts(contacts)}
         defaultDate={toDateInput(todayUTC())}
       />
     </div>

@@ -28,6 +28,12 @@ export async function createBusiness(formData: FormData) {
     },
   });
   await seedChartOfAccounts(business.id);
+  await prisma.contactType.createMany({
+    data: [
+      { businessId: business.id, name: "Customer" },
+      { businessId: business.id, name: "Vendor" },
+    ],
+  });
   (await cookies()).set(BUSINESS_COOKIE, business.id, { maxAge: 60 * 60 * 24 * 365 });
   revalidatePath("/", "layout");
   redirect("/");
@@ -44,7 +50,7 @@ export async function updateBusiness(id: string, formData: FormData) {
     },
   });
   revalidatePath("/", "layout");
-  redirect("/businesses");
+  redirect("/settings/businesses");
 }
 
 export async function deleteBusiness(formData: FormData) {
@@ -52,7 +58,7 @@ export async function deleteBusiness(formData: FormData) {
   await prisma.business.delete({ where: { id } });
   (await cookies()).delete(BUSINESS_COOKIE);
   revalidatePath("/", "layout");
-  redirect("/businesses");
+  redirect("/settings/businesses");
 }
 
 export async function switchBusiness(id: string) {
@@ -135,7 +141,7 @@ export async function createTag(formData: FormData) {
   await prisma.tag.create({
     data: { businessId: business.id, name, color: str(formData, "color") || "#10b981" },
   });
-  revalidatePath("/tags");
+  revalidatePath("/settings/tags");
 }
 
 export async function updateTag(formData: FormData) {
@@ -144,12 +150,12 @@ export async function updateTag(formData: FormData) {
     where: { id },
     data: { name: str(formData, "name"), color: str(formData, "color") },
   });
-  revalidatePath("/tags");
+  revalidatePath("/settings/tags");
 }
 
 export async function deleteTag(formData: FormData) {
   await prisma.tag.delete({ where: { id: str(formData, "id") } });
-  revalidatePath("/tags");
+  revalidatePath("/settings/tags");
 }
 
 // ------------------------------------------------------------------- classes
@@ -159,7 +165,7 @@ export async function createClass(formData: FormData) {
   const name = str(formData, "name");
   if (!name) throw new Error("Class name is required");
   await prisma.class.create({ data: { businessId: business.id, name } });
-  revalidatePath("/classes");
+  revalidatePath("/settings/classes");
 }
 
 export async function updateClass(formData: FormData) {
@@ -167,13 +173,13 @@ export async function updateClass(formData: FormData) {
   const name = str(formData, "name");
   if (!name) throw new Error("Class name is required");
   await prisma.class.update({ where: { id }, data: { name } });
-  revalidatePath("/classes");
+  revalidatePath("/settings/classes");
 }
 
 export async function deleteClass(formData: FormData) {
   // Lines keep their data; classId is nulled out by the relation's SetNull.
   await prisma.class.delete({ where: { id: str(formData, "id") } });
-  revalidatePath("/classes");
+  revalidatePath("/settings/classes");
 }
 
 // ------------------------------------------------------------ journal entries
@@ -279,7 +285,8 @@ function contactData(formData: FormData) {
   const name =
     explicit || company || [firstName, lastName].filter(Boolean).join(" ").trim();
   return {
-    kind: str(formData, "kind") === "VENDOR" ? "VENDOR" : "CUSTOMER",
+    typeId: str(formData, "typeId") || null,
+    parentId: str(formData, "parentId") || null,
     name,
     firstName,
     lastName,
@@ -306,9 +313,37 @@ export async function createContact(formData: FormData) {
 export async function updateContact(id: string, formData: FormData) {
   const data = contactData(formData);
   if (!data.name) throw new Error("Provide a display name, company, or first/last name");
+  if (data.parentId === id) throw new Error("A contact cannot be its own parent");
   await prisma.contact.update({ where: { id }, data });
   revalidatePath("/contacts");
   redirect("/contacts");
+}
+
+// -------------------------------------------------------------- contact types
+
+export async function createContactType(formData: FormData) {
+  const business = await requireBusiness();
+  const name = str(formData, "name");
+  if (!name) throw new Error("Type name is required");
+  await prisma.contactType.create({ data: { businessId: business.id, name } });
+  revalidatePath("/settings/contact-types");
+  revalidatePath("/contacts");
+}
+
+export async function updateContactType(formData: FormData) {
+  const id = str(formData, "id");
+  const name = str(formData, "name");
+  if (!name) throw new Error("Type name is required");
+  await prisma.contactType.update({ where: { id }, data: { name } });
+  revalidatePath("/settings/contact-types");
+  revalidatePath("/contacts");
+}
+
+export async function deleteContactType(formData: FormData) {
+  // Contacts keep their data; typeId is nulled via SetNull.
+  await prisma.contactType.delete({ where: { id: str(formData, "id") } });
+  revalidatePath("/settings/contact-types");
+  revalidatePath("/contacts");
 }
 
 export async function deleteContact(formData: FormData) {
@@ -347,8 +382,15 @@ export async function createInvoice(input: InvoiceInput): Promise<{ error?: stri
 
   let customerId = input.customerId;
   if (!customerId && input.newCustomerName?.trim()) {
+    const customerType = await prisma.contactType.findFirst({
+      where: { businessId: business.id, name: "Customer" },
+    });
     const customer = await prisma.contact.create({
-      data: { businessId: business.id, kind: "CUSTOMER", name: input.newCustomerName.trim() },
+      data: {
+        businessId: business.id,
+        typeId: customerType?.id ?? null,
+        name: input.newCustomerName.trim(),
+      },
     });
     customerId = customer.id;
   }

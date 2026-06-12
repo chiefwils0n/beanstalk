@@ -1,7 +1,7 @@
-import { prisma } from "../../lib/db";
-import { getActiveBusiness } from "../../lib/business";
-import { createBusiness, deleteBusiness, switchBusiness } from "../../lib/actions";
-import { ConfirmButton } from "../../components/ConfirmButton";
+import { prisma } from "../../../lib/db";
+import { getActiveBusiness } from "../../../lib/business";
+import { createBusiness, deleteBusiness, switchBusiness } from "../../../lib/actions";
+import { ConfirmButton } from "../../../components/ConfirmButton";
 
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
@@ -19,7 +19,6 @@ export default async function BusinessesPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="page-title">Businesses</h1>
 
       {businesses.length === 0 && (
         <div className="rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-sm dark:border-emerald-800 dark:bg-emerald-950">

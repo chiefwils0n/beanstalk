@@ -3,6 +3,7 @@ import { prisma } from "../../../lib/db";
 import { requireBusiness } from "../../../lib/business";
 import { flattenAccounts } from "../../../lib/accounting";
 import { formatMoney, formatDate, parseDate, toDateInput, todayUTC } from "../../../lib/money";
+import { contactWithDescendants } from "../../../lib/contacts";
 
 export default async function GeneralLedgerPage({
   searchParams,
@@ -19,12 +20,19 @@ export default async function GeneralLedgerPage({
   const [accounts, classes, contacts, lines] = await Promise.all([
     prisma.account.findMany({ where: { businessId: business.id } }),
     prisma.class.findMany({ where: { businessId: business.id }, orderBy: { name: "asc" } }),
-    prisma.contact.findMany({ where: { businessId: business.id }, orderBy: { name: "asc" } }),
+    prisma.contact.findMany({
+      where: { businessId: business.id },
+      include: { type: true },
+      orderBy: { name: "asc" },
+    }),
     prisma.journalLine.findMany({
       where: {
         accountId: sp.account || undefined,
         classId: sp.class || undefined,
-        contactId: sp.contact || undefined,
+        // Filtering by a parent contact (e.g. a household) includes its nested contacts.
+        contactId: sp.contact
+          ? { in: await contactWithDescendants(business.id, sp.contact) }
+          : undefined,
         entry: { businessId: business.id, status: "POSTED", date: { gte: from, lte: to } },
       },
       include: { entry: true, account: true, class: true, contact: true },
@@ -72,7 +80,8 @@ export default async function GeneralLedgerPage({
               <option value="">All names</option>
               {contacts.map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.name} ({c.kind.toLowerCase()})
+                  {c.name}
+                  {c.type ? ` (${c.type.name.toLowerCase()})` : ""}
                 </option>
               ))}
             </select>

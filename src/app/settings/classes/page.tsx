@@ -1,7 +1,7 @@
-import { prisma } from "../../lib/db";
-import { requireBusiness } from "../../lib/business";
-import { createClass, updateClass, deleteClass } from "../../lib/actions";
-import { ConfirmButton } from "../../components/ConfirmButton";
+import { prisma } from "../../../lib/db";
+import { requireBusiness } from "../../../lib/business";
+import { createClass, updateClass, deleteClass } from "../../../lib/actions";
+import { ConfirmButton } from "../../../components/ConfirmButton";
 
 export default async function ClassesPage() {
   const business = await requireBusiness();
@@ -13,7 +13,6 @@ export default async function ClassesPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="page-title">Classes</h1>
       <p className="text-sm text-zinc-500 dark:text-zinc-400">
         Classes label individual transaction lines — departments, locations, product lines —
         for report grouping. Once you create one, a Class column appears on transaction,

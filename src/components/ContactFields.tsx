@@ -1,14 +1,28 @@
-import type { Contact } from "@prisma/client";
+import type { Contact, ContactType } from "@prisma/client";
+
+export type ParentOption = { id: string; name: string };
 
 /** Shared field grid for the create and edit contact forms (server-rendered). */
-export function ContactFields({ contact }: { contact?: Contact }) {
+export function ContactFields({
+  contact,
+  types,
+  parents,
+}: {
+  contact?: Contact;
+  types: ContactType[];
+  parents: ParentOption[];
+}) {
   return (
     <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
       <div>
         <label className="label">Type</label>
-        <select name="kind" className="input" defaultValue={contact?.kind ?? "CUSTOMER"}>
-          <option value="CUSTOMER">Customer</option>
-          <option value="VENDOR">Vendor</option>
+        <select name="typeId" className="input" defaultValue={contact?.typeId ?? types[0]?.id ?? ""}>
+          <option value="">— none —</option>
+          {types.map((type) => (
+            <option key={type.id} value={type.id}>
+              {type.name}
+            </option>
+          ))}
         </select>
       </div>
       <div>
@@ -28,6 +42,19 @@ export function ContactFields({ contact }: { contact?: Contact }) {
         <input name="name" className="input" defaultValue={contact?.name ?? ""} />
       </div>
       <div>
+        <label className="label">Nest under (e.g. household, organization)</label>
+        <select name="parentId" className="input" defaultValue={contact?.parentId ?? ""}>
+          <option value="">— top level —</option>
+          {parents
+            .filter((p) => p.id !== contact?.id)
+            .map((parent) => (
+              <option key={parent.id} value={parent.id}>
+                {parent.name}
+              </option>
+            ))}
+        </select>
+      </div>
+      <div>
         <label className="label">Email</label>
         <input name="email" type="email" className="input" defaultValue={contact?.email ?? ""} />
       </div>
@@ -35,7 +62,7 @@ export function ContactFields({ contact }: { contact?: Contact }) {
         <label className="label">Phone</label>
         <input name="phone" className="input" defaultValue={contact?.phone ?? ""} />
       </div>
-      <div className="sm:col-span-2">
+      <div>
         <label className="label">Street address</label>
         <input name="address" className="input" defaultValue={contact?.address ?? ""} />
       </div>

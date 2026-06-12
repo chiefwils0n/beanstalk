@@ -17,6 +17,6 @@ export async function getActiveBusiness() {
 /** Redirects to onboarding when no business exists yet. */
 export async function requireBusiness() {
   const business = await getActiveBusiness();
-  if (!business) redirect("/businesses");
+  if (!business) redirect("/settings/businesses");
   return business;
 }

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "../../../lib/db";
 import { flattenAccounts } from "../../../lib/accounting";
+import { flattenContacts } from "../../../lib/contacts";
 import { voidEntry, deleteEntry } from "../../../lib/actions";
 import { formatDate, toDateInput, todayUTC } from "../../../lib/money";
 import { EntryForm } from "../../../components/EntryForm";
@@ -19,7 +20,11 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
     prisma.account.findMany({ where: { businessId: entry.businessId } }),
     prisma.tag.findMany({ where: { businessId: entry.businessId }, orderBy: { name: "asc" } }),
     prisma.class.findMany({ where: { businessId: entry.businessId }, orderBy: { name: "asc" } }),
-    prisma.contact.findMany({ where: { businessId: entry.businessId }, orderBy: { name: "asc" } }),
+    prisma.contact.findMany({
+      where: { businessId: entry.businessId },
+      include: { type: true },
+      orderBy: { name: "asc" },
+    }),
   ]);
 
   return (
@@ -79,7 +84,7 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
         accounts={flattenAccounts(accounts)}
         tags={tags.map((t) => ({ id: t.id, name: t.name, color: t.color }))}
         classes={classes.map((c) => ({ id: c.id, name: c.name }))}
-        contacts={contacts.map((c) => ({ id: c.id, name: c.name, kind: c.kind }))}
+        contacts={flattenContacts(contacts)}
         defaultDate={toDateInput(todayUTC())}
         entryId={entry.id}
         initial={{

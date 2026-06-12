@@ -11,13 +11,11 @@ const NAV: [string, string][] = [
   ["Invoices", "/invoices"],
   ["Contacts", "/contacts"],
   ["Chart of Accounts", "/accounts"],
-  ["Tags", "/tags"],
-  ["Classes", "/classes"],
   ["Recurring", "/recurring"],
   ["Loans", "/loans"],
   ["Documents", "/documents"],
   ["Reports", "/reports"],
-  ["Businesses", "/businesses"],
+  ["Settings", "/settings"],
 ];
 
 export async function Sidebar() {

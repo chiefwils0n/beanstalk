@@ -6,8 +6,9 @@ import { InvoiceForm } from "../../../components/InvoiceForm";
 export default async function NewInvoicePage() {
   const business = await requireBusiness();
   const [customers, incomeAccounts, classes] = await Promise.all([
+    // Any contact can be invoiced (customers, tenants, …).
     prisma.contact.findMany({
-      where: { businessId: business.id, kind: "CUSTOMER" },
+      where: { businessId: business.id },
       orderBy: { name: "asc" },
     }),
     prisma.account.findMany({

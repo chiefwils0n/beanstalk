@@ -16,15 +16,28 @@ model Business {
   driveFolderId   String?
   createdAt       DateTime @default(now())
 
-  accounts  Account[]
-  entries   JournalEntry[]
-  tags      Tag[]
-  classes   Class[]
-  contacts  Contact[]
-  invoices  Invoice[]
-  recurring RecurringTransaction[]
-  documents Document[]
-  loans     Loan[]
+  accounts     Account[]
+  entries      JournalEntry[]
+  tags         Tag[]
+  classes      Class[]
+  contacts     Contact[]
+  contactTypes ContactType[]
+  invoices     Invoice[]
+  recurring    RecurringTransaction[]
+  documents    Document[]
+  loans        Loan[]
+}
+
+// User-defined contact categories (Customer, Vendor, Tenant, Lead, …).
+model ContactType {
+  id         String @id @default(cuid())
+  businessId String
+  name       String
+
+  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  contacts Contact[]
+
+  @@unique([businessId, name])
 }
 
 model Loan {
@@ -170,13 +183,15 @@ model EntryTag {
   @@id([entryId, tagId])
 }
 
-// kind: CUSTOMER | VENDOR. `name` is the display name (company or person);
-// the detail fields are optional. Contacts can be linked to individual
-// journal lines for per-name reporting.
+// `name` is the display name (company or person); the detail fields are
+// optional. Contacts have a user-defined type (Customer, Vendor, Tenant, …),
+// can nest under a parent contact (e.g. tenants under a household), and can be
+// linked to individual journal lines for per-name reporting.
 model Contact {
   id         String  @id @default(cuid())
   businessId String
-  kind       String  @default("CUSTOMER")
+  typeId     String?
+  parentId   String?
   name       String
   firstName  String?
   lastName   String?
@@ -190,12 +205,15 @@ model Contact {
   notes      String?
 
   business       Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  type           ContactType?    @relation(fields: [typeId], references: [id], onDelete: SetNull)
+  parent         Contact?        @relation("ContactChildren", fields: [parentId], references: [id], onDelete: SetNull)
+  children       Contact[]       @relation("ContactChildren")
   invoices       Invoice[]
   lines          JournalLine[]
   recurringLines RecurringLine[]
   loans          Loan[]
 
-  @@index([businessId, kind])
+  @@index([businessId, typeId])
 }
 
 // status: DRAFT | SENT | PAID | VOID

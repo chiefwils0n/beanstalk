@@ -109,8 +109,17 @@ async function main() {
     },
   });
 
+  const customerType = await prisma.contactType.create({
+    data: { businessId: business.id, name: "Customer" },
+  });
+  await prisma.contactType.create({ data: { businessId: business.id, name: "Vendor" } });
   const customer = await prisma.contact.create({
-    data: { businessId: business.id, kind: "CUSTOMER", name: "Globex Corp", email: "ap@globex.example" },
+    data: {
+      businessId: business.id,
+      typeId: customerType.id,
+      name: "Globex Corp",
+      email: "ap@globex.example",
+    },
   });
   await prisma.invoice.create({
     data: {

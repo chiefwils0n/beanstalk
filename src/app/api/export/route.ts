@@ -9,6 +9,7 @@ import {
   type AccountNode,
 } from "../../../lib/accounting";
 import { parseDate, toDateInput, todayUTC } from "../../../lib/money";
+import { contactWithDescendants } from "../../../lib/contacts";
 
 function csvEscape(value: string): string {
   return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
@@ -103,12 +104,14 @@ export async function GET(request: NextRequest) {
     }
     case "general-ledger": {
       const accountId = params.get("account") || undefined;
-      const contactId = params.get("contact") || undefined;
+      const contactParam = params.get("contact") || undefined;
       const lines = await prisma.journalLine.findMany({
         where: {
           accountId,
           classId,
-          contactId,
+          contactId: contactParam
+            ? { in: await contactWithDescendants(business.id, contactParam) }
+            : undefined,
           entry: { businessId: business.id, status: "POSTED", date: { gte: from, lte: to } },
         },
         include: { entry: true, account: true, class: true, contact: true },
