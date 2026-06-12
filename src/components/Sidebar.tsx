@@ -5,17 +5,15 @@ import { NavLinks } from "./NavLinks";
 import { BusinessSwitcher } from "./BusinessSwitcher";
 import { ThemeToggle } from "./theme";
 
-const NAV: [string, string][] = [
-  ["Dashboard", "/"],
-  ["Transactions", "/transactions"],
-  ["Invoices", "/invoices"],
-  ["Contacts", "/contacts"],
+const NAV_MAIN: [string, string][] = [
   ["Chart of Accounts", "/accounts"],
-  ["Recurring", "/recurring"],
-  ["Loans", "/loans"],
+  ["Contacts", "/contacts"],
   ["Documents", "/documents"],
+  ["Invoices", "/invoices"],
+  ["Loans", "/loans"],
+  ["Recurring", "/recurring"],
   ["Reports", "/reports"],
-  ["Settings", "/settings"],
+  ["Transactions", "/transactions"],
 ];
 
 export async function Sidebar() {
@@ -32,7 +30,13 @@ export async function Sidebar() {
         businesses={businesses.map((b) => ({ id: b.id, name: b.name }))}
         activeId={active?.id ?? null}
       />
-      <NavLinks items={NAV} />
+      <div className="flex flex-col gap-0.5">
+        <NavLinks items={[["Dashboard", "/"]]} />
+        <hr className="my-2 border-zinc-200 dark:border-zinc-800" />
+        <NavLinks items={NAV_MAIN} />
+        <hr className="my-2 border-zinc-200 dark:border-zinc-800" />
+        <NavLinks items={[["Settings", "/settings"]]} />
+      </div>
       <div className="mt-auto">
         <ThemeToggle />
       </div>
