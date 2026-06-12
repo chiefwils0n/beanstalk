@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { prisma } from "../../../lib/db";
 import { getActiveBusiness } from "../../../lib/business";
 import { createBusiness, deleteBusiness, switchBusiness } from "../../../lib/actions";
@@ -31,7 +32,12 @@ export default async function BusinessesPage() {
         <div key={business.id} className="card flex items-center justify-between">
           <div>
             <p className="font-semibold">
-              {business.name}
+              <Link
+                href={`/settings/businesses/${business.id}`}
+                className="hover:text-emerald-600 hover:underline dark:hover:text-emerald-400"
+              >
+                {business.name}
+              </Link>
               {business.id === active?.id && (
                 <span className="badge ml-2 bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
                   active
