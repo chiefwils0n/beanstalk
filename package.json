@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "DATABASE_URL=file:./sandbox.db next dev -p 3001",
+    "dev": "DATABASE_URL=file:./sandbox.db NEXT_DIST_DIR=.next-dev next dev -p 3001",
     "build": "next build",
     "start": "next start -p 3000",
     "start:prod": "next build && next start -p 3000",
