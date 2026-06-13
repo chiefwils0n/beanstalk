@@ -28,7 +28,8 @@ export default async function GeneralLedgerPage({
     prisma.journalLine.findMany({
       where: {
         accountId: sp.account || undefined,
-        classId: sp.class || undefined,
+        // `class=none` filters to lines with no class; otherwise filter by id.
+        classId: sp.class === "none" ? null : sp.class || undefined,
         // Filtering by a parent contact (e.g. a household) includes its nested contacts.
         contactId: sp.contact
           ? { in: await contactWithDescendants(business.id, sp.contact) }

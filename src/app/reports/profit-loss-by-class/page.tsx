@@ -1,11 +1,17 @@
 import { Fragment } from "react";
 import Link from "next/link";
 import { requireBusiness } from "../../../lib/business";
-import { profitAndLossByClass, type ClassColumn, type ClassMatrixNode } from "../../../lib/accounting";
+import {
+  profitAndLossByClass,
+  UNCLASSIFIED_KEY,
+  type ClassColumn,
+  type ClassMatrixNode,
+} from "../../../lib/accounting";
 import { formatMoney, parseDate, toDateInput, todayUTC } from "../../../lib/money";
 import { ReportSectionHeader } from "../../../components/ReportSection";
+import { ledgerHref, type DrillRange } from "../../../components/ReportTree";
 
-/** A money cell; blank for exactly zero to keep the matrix readable. */
+/** A plain (non-drillable) money cell; blank for exactly zero. */
 function Amount({ value, bold }: { value: number; bold?: boolean }) {
   return (
     <td className={`td text-right money whitespace-nowrap ${bold ? "font-semibold" : ""}`}>
@@ -14,13 +20,49 @@ function Amount({ value, bold }: { value: number; bold?: boolean }) {
   );
 }
 
+/**
+ * A drillable amount cell. `classId` is the column's class (or undefined for the
+ * Total column / "none" for Unclassified) — clicking opens the General Ledger
+ * filtered to this account + class + period, from which you can reach the entry.
+ */
+function DrillAmount({
+  value,
+  accountId,
+  drill,
+  classId,
+  bold,
+}: {
+  value: number;
+  accountId: string;
+  drill: DrillRange;
+  classId?: string;
+  bold?: boolean;
+}) {
+  return (
+    <td className={`td text-right money whitespace-nowrap ${bold ? "font-semibold" : ""}`}>
+      {value === 0 ? (
+        ""
+      ) : (
+        <Link
+          href={ledgerHref(accountId, { ...drill, classId })}
+          className="hover:text-emerald-600 hover:underline dark:hover:text-emerald-400"
+        >
+          {formatMoney(value)}
+        </Link>
+      )}
+    </td>
+  );
+}
+
 function MatrixRows({
   nodes,
   columns,
+  drill,
   depth = 0,
 }: {
   nodes: ClassMatrixNode[];
   columns: ClassColumn[];
+  drill: DrillRange;
   depth?: number;
 }) {
   return (
@@ -33,13 +75,29 @@ function MatrixRows({
               <td className={`td whitespace-nowrap ${isParent ? "font-semibold" : ""}`}>
                 <span style={{ paddingLeft: `${depth * 1.25}rem` }}>{node.account.name}</span>
               </td>
-              {columns.map((col) => (
-                <Amount key={col.key} value={node.values[col.key]} bold={isParent} />
-              ))}
-              <Amount value={node.total} bold />
+              {/* Parent rows show rolled-up totals that don't map to one ledger
+                  query, so only leaf cells are drillable. */}
+              {columns.map((col) =>
+                isParent ? (
+                  <Amount key={col.key} value={node.values[col.key]} bold />
+                ) : (
+                  <DrillAmount
+                    key={col.key}
+                    value={node.values[col.key]}
+                    accountId={node.account.id}
+                    drill={drill}
+                    classId={col.key === UNCLASSIFIED_KEY ? "none" : col.key}
+                  />
+                )
+              )}
+              {isParent ? (
+                <Amount value={node.total} bold />
+              ) : (
+                <DrillAmount value={node.total} accountId={node.account.id} drill={drill} bold />
+              )}
             </tr>
             {isParent && (
-              <MatrixRows nodes={node.children} columns={columns} depth={depth + 1} />
+              <MatrixRows nodes={node.children} columns={columns} drill={drill} depth={depth + 1} />
             )}
           </Fragment>
         );
@@ -100,6 +158,7 @@ export default async function ProfitLossByClassPage({
   const { columns } = report;
   // Account column + one per class + Total column.
   const totalCols = columns.length + 2;
+  const drill: DrillRange = { from: from ? toDateInput(from) : undefined, to: toDateInput(to) };
 
   return (
     <div className="flex flex-col gap-6">
@@ -143,11 +202,11 @@ export default async function ProfitLossByClassPage({
             </thead>
             <tbody>
               <ReportSectionHeader label="Income" tone="income" colSpan={totalCols} />
-              <MatrixRows nodes={report.income} columns={columns} />
+              <MatrixRows nodes={report.income} columns={columns} drill={drill} />
               <TotalRow label="Total income" totals={report.incomeTotals} columns={columns} grand={report.totalIncome} />
 
               <ReportSectionHeader label="Expenses" tone="expense" gap colSpan={totalCols} />
-              <MatrixRows nodes={report.expenses} columns={columns} />
+              <MatrixRows nodes={report.expenses} columns={columns} drill={drill} />
               <TotalRow label="Total expenses" totals={report.expenseTotals} columns={columns} grand={report.totalExpenses} />
 
               <tr aria-hidden>
