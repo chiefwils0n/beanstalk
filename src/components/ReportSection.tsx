@@ -13,21 +13,23 @@ export function ReportSectionHeader({
   label,
   tone,
   gap = false,
+  colSpan = 2,
 }: {
   label: string;
   tone: keyof typeof TONES;
   gap?: boolean;
+  colSpan?: number;
 }) {
   return (
     <>
       {gap && (
         <tr aria-hidden>
-          <td colSpan={2} className="h-3" />
+          <td colSpan={colSpan} className="h-3" />
         </tr>
       )}
       <tr>
         <td
-          colSpan={2}
+          colSpan={colSpan}
           className={`border-l-4 px-3 py-2 text-base font-bold text-zinc-900 dark:text-zinc-100 ${TONES[tone]}`}
         >
           {label}

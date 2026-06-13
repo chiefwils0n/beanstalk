@@ -133,6 +133,143 @@ export async function profitAndLoss(
   return { income, expenses, totalIncome, totalExpenses, netIncome: totalIncome - totalExpenses };
 }
 
+// ----------------------------------------------------- P&L by class (matrix)
+
+export type ClassColumn = { key: string; name: string };
+
+export type ClassMatrixNode = {
+  account: Account;
+  /** Signed amount per column key, rolled up to include descendants. */
+  values: Record<string, number>;
+  /** Row total across all columns. */
+  total: number;
+  children: ClassMatrixNode[];
+};
+
+export const UNCLASSIFIED_KEY = "__none__";
+
+/**
+ * Profit & Loss broken out by class: income/expense accounts as rows, each
+ * class (plus an Unclassified bucket and a Total) as a column. Only classes
+ * with activity in the period get a column.
+ */
+export async function profitAndLossByClass(
+  businessId: string,
+  from: Date | undefined,
+  to: Date
+) {
+  const [accounts, lines, classes] = await Promise.all([
+    prisma.account.findMany({ where: { businessId, type: { in: ["INCOME", "EXPENSE"] } } }),
+    prisma.journalLine.findMany({
+      where: {
+        account: { businessId, type: { in: ["INCOME", "EXPENSE"] } },
+        entry: { businessId, status: "POSTED", date: { gte: from, lte: to } },
+      },
+      select: { accountId: true, classId: true, debit: true, credit: true },
+    }),
+    prisma.class.findMany({ where: { businessId }, orderBy: { name: "asc" } }),
+  ]);
+
+  const acctById = new Map(accounts.map((a) => [a.id, a]));
+
+  // Columns: only classes that actually have income/expense activity, then an
+  // Unclassified column if any such lines have no class.
+  const usedClassIds = new Set<string>();
+  let hasUnclassified = false;
+  for (const l of lines) {
+    if (l.classId) usedClassIds.add(l.classId);
+    else hasUnclassified = true;
+  }
+  const columns: ClassColumn[] = classes
+    .filter((c) => usedClassIds.has(c.id))
+    .map((c) => ({ key: c.id, name: c.name }));
+  if (hasUnclassified) columns.push({ key: UNCLASSIFIED_KEY, name: "Unclassified" });
+  const colKeys = columns.map((c) => c.key);
+
+  // Direct (own) signed balance per account, per column.
+  const own = new Map<string, Record<string, number>>();
+  for (const l of lines) {
+    const acct = acctById.get(l.accountId);
+    if (!acct) continue;
+    const col = l.classId ?? UNCLASSIFIED_KEY;
+    const signed = signedBalance(acct.type, l.debit, l.credit);
+    let row = own.get(l.accountId);
+    if (!row) {
+      row = {};
+      own.set(l.accountId, row);
+    }
+    row[col] = (row[col] ?? 0) + signed;
+  }
+
+  function buildMatrix(typeAccounts: Account[]): ClassMatrixNode[] {
+    const nodes = new Map<string, ClassMatrixNode>();
+    for (const account of typeAccounts) {
+      const ownRow = own.get(account.id) ?? {};
+      const values: Record<string, number> = {};
+      for (const k of colKeys) values[k] = ownRow[k] ?? 0;
+      nodes.set(account.id, { account, values, total: 0, children: [] });
+    }
+    const roots: ClassMatrixNode[] = [];
+    for (const node of nodes.values()) {
+      const parent = node.account.parentId ? nodes.get(node.account.parentId) : undefined;
+      if (parent) parent.children.push(node);
+      else roots.push(node);
+    }
+    const sortRec = (list: ClassMatrixNode[]) => {
+      list.sort((a, b) =>
+        (a.account.code ?? a.account.name).localeCompare(b.account.code ?? b.account.name)
+      );
+      list.forEach((n) => sortRec(n.children));
+    };
+    sortRec(roots);
+    const rollup = (node: ClassMatrixNode) => {
+      for (const child of node.children) {
+        rollup(child);
+        for (const k of colKeys) node.values[k] += child.values[k];
+      }
+      node.total = colKeys.reduce((s, k) => s + node.values[k], 0);
+    };
+    roots.forEach(rollup);
+    // This is a period-activity report: drop accounts with no activity in any
+    // column (keeping parents that still have a surviving child).
+    const hasActivity = (n: ClassMatrixNode) => colKeys.some((k) => n.values[k] !== 0);
+    const prune = (list: ClassMatrixNode[]): ClassMatrixNode[] =>
+      list
+        .map((n) => ({ ...n, children: prune(n.children) }))
+        .filter((n) => hasActivity(n) || n.children.length > 0);
+    return prune(roots);
+  }
+
+  const income = buildMatrix(accounts.filter((a) => a.type === "INCOME"));
+  const expenses = buildMatrix(accounts.filter((a) => a.type === "EXPENSE"));
+
+  const colTotal = (rows: ClassMatrixNode[], key: string) =>
+    rows.reduce((s, n) => s + n.values[key], 0);
+
+  const incomeTotals: Record<string, number> = {};
+  const expenseTotals: Record<string, number> = {};
+  const netTotals: Record<string, number> = {};
+  for (const k of colKeys) {
+    incomeTotals[k] = colTotal(income, k);
+    expenseTotals[k] = colTotal(expenses, k);
+    netTotals[k] = incomeTotals[k] - expenseTotals[k];
+  }
+  const totalIncome = colKeys.reduce((s, k) => s + incomeTotals[k], 0);
+  const totalExpenses = colKeys.reduce((s, k) => s + expenseTotals[k], 0);
+
+  return {
+    columns,
+    income,
+    expenses,
+    incomeTotals,
+    expenseTotals,
+    netTotals,
+    totalIncome,
+    totalExpenses,
+    netIncome: totalIncome - totalExpenses,
+  };
+}
+
 export async function balanceSheet(businessId: string, asOf: Date) {
   const [accounts, balances] = await Promise.all([
     prisma.account.findMany({ where: { businessId } }),

@@ -8,6 +8,11 @@ const REPORTS = [
     description: "Income and expenses over a period, with net income.",
   },
   {
+    href: "/reports/profit-loss-by-class",
+    title: "Profit & Loss by Class",
+    description: "Income and expenses with each class as a side-by-side column.",
+  },
+  {
     href: "/reports/balance-sheet",
     title: "Balance Sheet",
     description: "Assets, liabilities, and equity as of a date.",
