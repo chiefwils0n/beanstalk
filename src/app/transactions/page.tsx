@@ -173,19 +173,38 @@ export default async function TransactionsPage({
                   {formatMoney(entry.lines.reduce((s, l) => s + l.debit, 0))}
                 </td>
                 <td className="td text-center">
-                  {entry.status === "VOID" ? (
-                    <span className="badge bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
-                      void
-                    </span>
-                  ) : entry.lines.every((l) => l.cleared === "RECONCILED") ? (
-                    <span className="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" title="All lines reconciled">
-                      R
-                    </span>
-                  ) : entry.lines.some((l) => l.cleared !== "NONE") ? (
-                    <span className="badge bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300" title="Has cleared lines">
-                      C
-                    </span>
-                  ) : null}
+                  {(() => {
+                    if (entry.status === "VOID")
+                      return (
+                        <span className="badge bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
+                          void
+                        </span>
+                      );
+                    // Reconcile status is per account. When filtered to an account,
+                    // judge only that account's line(s); otherwise across all legs.
+                    const relevant = account
+                      ? entry.lines.filter((l) => l.accountId === account)
+                      : entry.lines;
+                    if (relevant.some((l) => l.cleared === "RECONCILED"))
+                      return (
+                        <span
+                          className="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                          title={account ? "Reconciled" : "Reconciled on a bank/card statement"}
+                        >
+                          R
+                        </span>
+                      );
+                    if (relevant.some((l) => l.cleared === "CLEARED"))
+                      return (
+                        <span
+                          className="badge bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
+                          title="Cleared (reconciliation in progress)"
+                        >
+                          C
+                        </span>
+                      );
+                    return null;
+                  })()}
                 </td>
               </tr>
             ))}
