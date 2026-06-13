@@ -3,6 +3,7 @@ import { requireBusiness } from "../../../lib/business";
 import { balanceSheet } from "../../../lib/accounting";
 import { formatMoney, parseDate, toDateInput, todayUTC, formatDate } from "../../../lib/money";
 import { ReportTreeRows } from "../../../components/ReportTree";
+import { ReportSectionHeader } from "../../../components/ReportSection";
 
 export default async function BalanceSheetPage({
   searchParams,
@@ -43,31 +44,19 @@ export default async function BalanceSheetPage({
       <div className="card p-0">
         <table className="w-full">
           <tbody>
-            <tr>
-              <td className="td font-semibold" colSpan={2}>
-                Assets
-              </td>
-            </tr>
+            <ReportSectionHeader label="Assets" tone="asset" />
             <ReportTreeRows nodes={report.assets} drill={{ to: toDateInput(asOf) }} />
             <tr>
               <td className="td font-semibold">Total assets</td>
               <td className="td text-right money font-semibold">{formatMoney(report.totalAssets)}</td>
             </tr>
-            <tr>
-              <td className="td pt-4 font-semibold" colSpan={2}>
-                Liabilities
-              </td>
-            </tr>
+            <ReportSectionHeader label="Liabilities" tone="liability" gap />
             <ReportTreeRows nodes={report.liabilities} drill={{ to: toDateInput(asOf) }} />
             <tr>
               <td className="td font-semibold">Total liabilities</td>
               <td className="td text-right money font-semibold">{formatMoney(report.totalLiabilities)}</td>
             </tr>
-            <tr>
-              <td className="td pt-4 font-semibold" colSpan={2}>
-                Equity
-              </td>
-            </tr>
+            <ReportSectionHeader label="Equity" tone="equity" gap />
             <ReportTreeRows nodes={report.equity} drill={{ to: toDateInput(asOf) }} />
             <tr>
               <td className="td">

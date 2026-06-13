@@ -4,6 +4,7 @@ import { requireBusiness } from "../../../lib/business";
 import { profitAndLoss } from "../../../lib/accounting";
 import { formatMoney, parseDate, toDateInput, todayUTC } from "../../../lib/money";
 import { ReportTreeRows } from "../../../components/ReportTree";
+import { ReportSectionHeader } from "../../../components/ReportSection";
 
 export default async function ProfitLossPage({
   searchParams,
@@ -74,21 +75,13 @@ export default async function ProfitLossPage({
       <div className="card p-0">
         <table className="w-full">
           <tbody>
-            <tr>
-              <td className="td font-semibold" colSpan={2}>
-                Income
-              </td>
-            </tr>
+            <ReportSectionHeader label="Income" tone="income" />
             <ReportTreeRows nodes={report.income} drill={drill} />
             <tr>
               <td className="td font-semibold">Total income</td>
               <td className="td text-right money font-semibold">{formatMoney(report.totalIncome)}</td>
             </tr>
-            <tr>
-              <td className="td pt-4 font-semibold" colSpan={2}>
-                Expenses
-              </td>
-            </tr>
+            <ReportSectionHeader label="Expenses" tone="expense" gap />
             <ReportTreeRows nodes={report.expenses} drill={drill} />
             <tr>
               <td className="td font-semibold">Total expenses</td>
