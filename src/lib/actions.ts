@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { prisma } from "./db";
 import { BUSINESS_COOKIE, TXN_FILTER_COOKIE, requireBusiness } from "./business";
+import { checkPassword, createSession, SESSION_COOKIE, SESSION_TTL_MS } from "./auth";
 import { seedChartOfAccounts } from "./coa";
 import { parseDate, parseMoney, toDateInput } from "./money";
 import { postOccurrence, runDueRecurring, advanceDate } from "./recurring";
@@ -13,6 +14,29 @@ import { checkBalanced } from "./ledger";
 
 function str(formData: FormData, key: string): string {
   return String(formData.get(key) ?? "").trim();
+}
+
+// ----------------------------------------------------------------------- auth
+
+/** Verify the password and start a session; bounce back on failure. */
+export async function loginAction(formData: FormData) {
+  if (!checkPassword(String(formData.get("password") ?? ""))) {
+    redirect("/login?error=1");
+  }
+  // No Secure flag: self-hosted instances are commonly served over plain HTTP
+  // (localhost / VPN). httpOnly + SameSite=Lax are the protections that apply.
+  (await cookies()).set(SESSION_COOKIE, await createSession(), {
+    httpOnly: true,
+    sameSite: "lax",
+    path: "/",
+    maxAge: Math.floor(SESSION_TTL_MS / 1000),
+  });
+  redirect("/");
+}
+
+export async function logoutAction() {
+  (await cookies()).delete(SESSION_COOKIE);
+  redirect("/login");
 }
 
 // ------------------------------------------------------ transactions filter

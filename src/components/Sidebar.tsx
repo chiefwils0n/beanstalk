@@ -4,6 +4,8 @@ import { getActiveBusiness } from "../lib/business";
 import { NavLinks } from "./NavLinks";
 import { BusinessSwitcher } from "./BusinessSwitcher";
 import { ThemeToggle } from "./theme";
+import { authEnabled } from "../lib/auth";
+import { logoutAction } from "../lib/actions";
 
 const NAV_MAIN: [string, string][] = [
   ["Chart of Accounts", "/accounts"],
@@ -37,8 +39,13 @@ export async function Sidebar() {
         <hr className="my-2 border-zinc-200 dark:border-zinc-800" />
         <NavLinks items={[["Settings", "/settings"]]} />
       </div>
-      <div className="mt-auto">
+      <div className="mt-auto flex flex-col gap-2">
         <ThemeToggle />
+        {authEnabled() && (
+          <form action={logoutAction}>
+            <button className="btn btn-sm w-full">Log out</button>
+          </form>
+        )}
       </div>
     </aside>
   );
