@@ -6,7 +6,9 @@ import { requireBusiness, TXN_FILTER_COOKIE } from "../../lib/business";
 import { applyTransactionFilter, clearTransactionFilter } from "../../lib/actions";
 import { flattenAccounts } from "../../lib/accounting";
 import { flattenContacts, contactWithDescendants } from "../../lib/contacts";
-import { formatMoney, formatDate, parseDate, parseMoney } from "../../lib/money";
+import { formatMoney, formatDate, parseDate, parseMoney, toDateInput, todayUTC } from "../../lib/money";
+import { resolvePeriod } from "../../lib/periods";
+import { ReportPeriodFields } from "../../components/ReportPeriodFields";
 
 export default async function TransactionsPage({
   searchParams,
@@ -20,13 +22,23 @@ export default async function TransactionsPage({
     class?: string;
     contact?: string;
     amount?: string;
+    period?: string;
+    n?: string;
     sort?: string;
     dir?: string;
   }>;
 }) {
   const business = await requireBusiness();
   const sp = await searchParams;
-  const { from, to, tag, q, account, class: classFilter, contact, amount } = sp;
+  const { tag, q, account, class: classFilter, contact, amount } = sp;
+
+  // Reporting-period preset → effective From/To. A named period is recomputed
+  // each load (so "this month to date" stays current); "custom" uses the
+  // explicit dates. Both persist in the filter cookie.
+  const todayIso = toDateInput(todayUTC());
+  const resolved = resolvePeriod(sp.period, sp.from, sp.to, todayIso, business.fiscalYearStart, sp.n ? Number(sp.n) : undefined);
+  const fromDate = resolved.from ? parseDate(resolved.from) : undefined;
+  const toDate = resolved.to ? parseDate(resolved.to) : undefined;
 
   const SORT_COLS = ["date", "memo", "accounts", "amount", "status"] as const;
   type SortCol = (typeof SORT_COLS)[number];
@@ -79,10 +91,7 @@ export default async function TransactionsPage({
     prisma.journalEntry.findMany({
       where: {
         businessId: business.id,
-        date: {
-          gte: from ? parseDate(from) : undefined,
-          lte: to ? parseDate(to) : undefined,
-        },
+        date: { gte: fromDate, lte: toDate },
         tags: tag ? { some: { tagId: tag } } : undefined,
         memo: q ? { contains: q } : undefined,
         AND: lineConditions,
@@ -139,14 +148,14 @@ export default async function TransactionsPage({
       </div>
 
       <form className="card flex flex-wrap items-end gap-3" action={applyTransactionFilter}>
-        <div>
-          <label className="label">From</label>
-          <input type="date" name="from" defaultValue={from} className="input" />
-        </div>
-        <div>
-          <label className="label">To</label>
-          <input type="date" name="to" defaultValue={to} className="input" />
-        </div>
+        <ReportPeriodFields
+          today={todayIso}
+          fiscalStartMonth={business.fiscalYearStart}
+          defaultPeriod={resolved.period}
+          defaultFrom={resolved.from ?? ""}
+          defaultTo={resolved.to ?? ""}
+          defaultN={resolved.n}
+        />
         <div>
           <label className="label">Account</label>
           <select name="account" defaultValue={account ?? ""} className="input max-w-64">
