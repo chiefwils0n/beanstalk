@@ -32,12 +32,41 @@ export default async function Dashboard() {
   ]);
 
   const cards = [
-    { label: "Income (MTD)", value: mtd.totalIncome },
-    { label: "Expenses (MTD)", value: mtd.totalExpenses },
-    { label: "Net income (YTD)", value: ytd.netIncome },
-    { label: "Total assets", value: bs.totalAssets },
-    { label: "Total liabilities", value: bs.totalLiabilities },
+    { label: "Income (MTD)", value: mtd.totalIncome, tone: "emerald" },
+    { label: "Expenses (MTD)", value: mtd.totalExpenses, tone: "rose" },
+    { label: "Net income (YTD)", value: ytd.netIncome, tone: "sky" },
+    { label: "Total assets", value: bs.totalAssets, tone: "indigo" },
+    { label: "Total liabilities", value: bs.totalLiabilities, tone: "amber" },
   ];
+
+  // Static class strings per tone (Tailwind can't see dynamically-built names).
+  const toneStyles: Record<string, { wrap: string; label: string; value: string }> = {
+    emerald: {
+      wrap: "border-l-emerald-500 bg-emerald-50 dark:bg-emerald-950/40",
+      label: "text-emerald-700 dark:text-emerald-300",
+      value: "text-emerald-900 dark:text-emerald-50",
+    },
+    rose: {
+      wrap: "border-l-rose-500 bg-rose-50 dark:bg-rose-950/40",
+      label: "text-rose-700 dark:text-rose-300",
+      value: "text-rose-900 dark:text-rose-50",
+    },
+    sky: {
+      wrap: "border-l-sky-500 bg-sky-50 dark:bg-sky-950/40",
+      label: "text-sky-700 dark:text-sky-300",
+      value: "text-sky-900 dark:text-sky-50",
+    },
+    indigo: {
+      wrap: "border-l-indigo-500 bg-indigo-50 dark:bg-indigo-950/40",
+      label: "text-indigo-700 dark:text-indigo-300",
+      value: "text-indigo-900 dark:text-indigo-50",
+    },
+    amber: {
+      wrap: "border-l-amber-500 bg-amber-50 dark:bg-amber-950/40",
+      label: "text-amber-700 dark:text-amber-300",
+      value: "text-amber-900 dark:text-amber-50",
+    },
+  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -64,12 +93,22 @@ export default async function Dashboard() {
       )}
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
-        {cards.map((card) => (
-          <div key={card.label} className="card">
-            <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">{card.label}</p>
-            <p className="mt-1 money text-lg font-semibold">{formatMoney(card.value)}</p>
-          </div>
-        ))}
+        {cards.map((card) => {
+          const t = toneStyles[card.tone];
+          return (
+            <div
+              key={card.label}
+              className={`rounded-xl border-l-4 p-5 shadow-sm ${t.wrap}`}
+            >
+              <p className={`text-xs font-semibold uppercase tracking-wide ${t.label}`}>
+                {card.label}
+              </p>
+              <p className={`mt-2 money text-2xl font-bold ${t.value}`}>
+                {formatMoney(card.value)}
+              </p>
+            </div>
+          );
+        })}
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
