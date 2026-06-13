@@ -20,11 +20,30 @@ export default async function TransactionsPage({
     class?: string;
     contact?: string;
     amount?: string;
+    sort?: string;
+    dir?: string;
   }>;
 }) {
   const business = await requireBusiness();
   const sp = await searchParams;
   const { from, to, tag, q, account, class: classFilter, contact, amount } = sp;
+
+  const SORT_COLS = ["date", "memo", "accounts", "amount", "status"] as const;
+  type SortCol = (typeof SORT_COLS)[number];
+  const sort: SortCol = (SORT_COLS as readonly string[]).includes(sp.sort ?? "")
+    ? (sp.sort as SortCol)
+    : "date";
+  const dir: "asc" | "desc" = sp.dir === "asc" ? "asc" : "desc";
+  // Build a header link that preserves the current filter and toggles direction.
+  const sortHref = (col: SortCol) => {
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries(sp)) {
+      if (v && k !== "sort" && k !== "dir") params.set(k, String(v));
+    }
+    params.set("sort", col);
+    params.set("dir", sort === col && dir === "asc" ? "desc" : "asc");
+    return `/transactions?${params.toString()}`;
+  };
 
   // Filter persists across visits: arriving with no params restores the last
   // saved filter (cleared via the Clear button, which deletes the cookie).
@@ -68,7 +87,12 @@ export default async function TransactionsPage({
         memo: q ? { contains: q } : undefined,
         AND: lineConditions,
       },
-      orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+      orderBy:
+        sort === "memo"
+          ? [{ memo: dir }, { date: "desc" }]
+          : sort === "date"
+            ? [{ date: dir }, { createdAt: dir }]
+            : [{ date: "desc" }, { createdAt: "desc" }],
       take: 200,
       include: { lines: { include: { account: true } }, tags: { include: { tag: true } } },
     }),
@@ -81,6 +105,29 @@ export default async function TransactionsPage({
       orderBy: { name: "asc" },
     }),
   ]);
+
+  // Precompute the derived display values, then sort by the chosen column.
+  // Reconcile status is per account: when filtered to an account, judge only
+  // that account's line(s); otherwise across all legs.
+  const rows = entries.map((entry) => {
+    const amount = entry.lines.reduce((s, l) => s + l.debit, 0);
+    const accountsLabel = [...new Set(entry.lines.map((l) => l.account.name))].join(", ");
+    let status: "void" | "R" | "C" | "" = "";
+    if (entry.status === "VOID") status = "void";
+    else {
+      const relevant = account ? entry.lines.filter((l) => l.accountId === account) : entry.lines;
+      if (relevant.some((l) => l.cleared === "RECONCILED")) status = "R";
+      else if (relevant.some((l) => l.cleared === "CLEARED")) status = "C";
+    }
+    return { entry, amount, accountsLabel, status };
+  });
+  const flip = dir === "asc" ? 1 : -1;
+  if (sort === "amount") rows.sort((a, b) => flip * (a.amount - b.amount));
+  else if (sort === "accounts") rows.sort((a, b) => flip * a.accountsLabel.localeCompare(b.accountsLabel));
+  else if (sort === "status") {
+    const rank = { void: 0, "": 1, C: 2, R: 3 };
+    rows.sort((a, b) => flip * (rank[a.status] - rank[b.status]));
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -174,22 +221,39 @@ export default async function TransactionsPage({
         <table className="w-full">
           <thead>
             <tr>
-              <th className="th">Date</th>
-              <th className="th">Memo</th>
-              <th className="th">Accounts</th>
-              <th className="th text-right">Amount</th>
-              <th className="th text-center">Status</th>
+              {([
+                { col: "date", label: "Date", justify: "justify-start" },
+                { col: "memo", label: "Memo", justify: "justify-start" },
+                { col: "accounts", label: "Accounts", justify: "justify-start" },
+                { col: "amount", label: "Amount", justify: "justify-end" },
+                { col: "status", label: "Status", justify: "justify-center" },
+              ] as const).map(({ col, label, justify }) => {
+                const active = sort === col;
+                return (
+                  <th key={col} className="th">
+                    <Link
+                      href={sortHref(col)}
+                      className={`flex items-center gap-1 ${justify} hover:text-emerald-600 dark:hover:text-emerald-400 ${active ? "text-emerald-600 dark:text-emerald-400" : ""}`}
+                    >
+                      {label}
+                      <span className={active ? "" : "text-zinc-300 dark:text-zinc-600"}>
+                        {active ? (dir === "asc" ? "▲" : "▼") : "↕"}
+                      </span>
+                    </Link>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
-            {entries.length === 0 && (
+            {rows.length === 0 && (
               <tr>
                 <td className="td text-zinc-500" colSpan={5}>
                   No transactions found.
                 </td>
               </tr>
             )}
-            {entries.map((entry) => (
+            {rows.map(({ entry, amount, accountsLabel, status }) => (
               <tr key={entry.id} className={entry.status === "VOID" ? "opacity-50" : ""}>
                 <td className="td whitespace-nowrap text-zinc-500">{formatDate(entry.date)}</td>
                 <td className="td">
@@ -205,45 +269,30 @@ export default async function TransactionsPage({
                     </span>
                   ))}
                 </td>
-                <td className="td text-xs text-zinc-500">
-                  {[...new Set(entry.lines.map((l) => l.account.name))].join(", ")}
-                </td>
-                <td className="td text-right money">
-                  {formatMoney(entry.lines.reduce((s, l) => s + l.debit, 0))}
-                </td>
+                <td className="td text-xs text-zinc-500">{accountsLabel}</td>
+                <td className="td text-right money">{formatMoney(amount)}</td>
                 <td className="td text-center">
-                  {(() => {
-                    if (entry.status === "VOID")
-                      return (
-                        <span className="badge bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
-                          void
-                        </span>
-                      );
-                    // Reconcile status is per account. When filtered to an account,
-                    // judge only that account's line(s); otherwise across all legs.
-                    const relevant = account
-                      ? entry.lines.filter((l) => l.accountId === account)
-                      : entry.lines;
-                    if (relevant.some((l) => l.cleared === "RECONCILED"))
-                      return (
-                        <span
-                          className="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-                          title={account ? "Reconciled" : "Reconciled on a bank/card statement"}
-                        >
-                          R
-                        </span>
-                      );
-                    if (relevant.some((l) => l.cleared === "CLEARED"))
-                      return (
-                        <span
-                          className="badge bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
-                          title="Cleared (reconciliation in progress)"
-                        >
-                          C
-                        </span>
-                      );
-                    return null;
-                  })()}
+                  {status === "void" && (
+                    <span className="badge bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
+                      void
+                    </span>
+                  )}
+                  {status === "R" && (
+                    <span
+                      className="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                      title={account ? "Reconciled" : "Reconciled on a bank/card statement"}
+                    >
+                      R
+                    </span>
+                  )}
+                  {status === "C" && (
+                    <span
+                      className="badge bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
+                      title="Cleared (reconciliation in progress)"
+                    >
+                      C
+                    </span>
+                  )}
                 </td>
               </tr>
             ))}
