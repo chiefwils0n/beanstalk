@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "../../../lib/db";
 import { loanState, derivePayments } from "../../../lib/loans";
-import { deleteLoan, deleteLoanPayment } from "../../../lib/actions";
+import { deleteLoan, deleteLoanPayment, closeLoan, reopenLoan } from "../../../lib/actions";
 import { formatMoney, formatDate, toDateInput, todayUTC } from "../../../lib/money";
 import { PayoffChart, SplitChart } from "../../../components/LoanCharts";
 import { LoanPaymentForm } from "../../../components/LoanPaymentForm";
@@ -22,9 +22,12 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
       liabilityAccount: true,
       interestAccount: true,
       paymentAccount: true,
+      replaces: { select: { id: true, name: true } },
+      replacedBy: { select: { id: true, name: true } },
     },
   });
   if (!loan) notFound();
+  const closed = loan.status === "CLOSED";
 
   // Derive principal/interest live from the linked ledger entries.
   const payments = derivePayments(loan, loan.payments);
@@ -55,20 +58,73 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
           <Link href="/loans" className="text-sm text-emerald-600 hover:underline">
             ← Loans
           </Link>
-          <h1 className="page-title mt-1">{loan.name}</h1>
+          <h1 className="page-title mt-1">
+            {loan.name}
+            {closed && (
+              <span className="badge ml-2 bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
+                closed
+              </span>
+            )}
+          </h1>
           <p className="text-sm text-zinc-500">
             {loan.lender && `${loan.lender.name} · `}
             {formatMoney(loan.principal)} over {loan.termMonths} months · pays from{" "}
             {loan.paymentAccount.name} · liability {loan.liabilityAccount.name}
           </p>
+          {(loan.replaces || loan.replacedBy.length > 0) && (
+            <p className="mt-1 text-sm text-zinc-500">
+              {loan.replaces && (
+                <>
+                  Replaces{" "}
+                  <Link href={`/loans/${loan.replaces.id}`} className="text-emerald-600 hover:underline">
+                    {loan.replaces.name}
+                  </Link>
+                </>
+              )}
+              {loan.replaces && loan.replacedBy.length > 0 && " · "}
+              {loan.replacedBy.map((r, i) => (
+                <span key={r.id}>
+                  {i === 0 ? "Replaced by " : ", "}
+                  <Link href={`/loans/${r.id}`} className="text-emerald-600 hover:underline">
+                    {r.name}
+                  </Link>
+                </span>
+              ))}
+            </p>
+          )}
         </div>
-        <form action={deleteLoan}>
-          <input type="hidden" name="id" value={loan.id} />
-          <ConfirmButton message={`Delete loan ${loan.name}? Posted payment entries stay in the ledger.`}>
-            Delete loan
-          </ConfirmButton>
-        </form>
+        <div className="flex gap-2">
+          {closed ? (
+            <form action={reopenLoan}>
+              <input type="hidden" name="id" value={loan.id} />
+              <button className="btn btn-sm">Reopen</button>
+            </form>
+          ) : (
+            <form action={closeLoan}>
+              <input type="hidden" name="id" value={loan.id} />
+              <ConfirmButton
+                message="Close this loan? It keeps its full history but stops appearing as active and stops payment tracking. You can reopen it later."
+                className="btn btn-sm"
+              >
+                Close loan
+              </ConfirmButton>
+            </form>
+          )}
+          <form action={deleteLoan}>
+            <input type="hidden" name="id" value={loan.id} />
+            <ConfirmButton message={`Delete loan ${loan.name}? Posted payment entries stay in the ledger.`}>
+              Delete loan
+            </ConfirmButton>
+          </form>
+        </div>
       </div>
+
+      {closed && (
+        <div className="card border-zinc-300 bg-zinc-50 text-sm dark:border-zinc-700 dark:bg-zinc-900">
+          <span className="font-medium">Closed{loan.closedAt ? ` ${formatDate(loan.closedAt)}` : ""}.</span>{" "}
+          {loan.closureNote || "This loan is retired — no further payments are tracked. Its history is preserved below."}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-6">
         {cards.map((card) => (
@@ -79,7 +135,7 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
         ))}
       </div>
 
-      {!state.isPaidOff && (
+      {!state.isPaidOff && !closed && (
         <div className="card">
           <h2 className="mb-3 font-semibold">Record this month&apos;s payment</h2>
           <LoanPaymentForm
@@ -102,7 +158,7 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
         />
       </div>
 
-      {!state.isPaidOff && (
+      {!state.isPaidOff && !closed && (
         <>
           <div className="card">
             <h2 className="mb-1 font-semibold">Principal vs interest, each remaining payment</h2>

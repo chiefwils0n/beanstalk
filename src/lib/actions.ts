@@ -748,8 +748,23 @@ export async function createLoan(formData: FormData) {
       interestAccountId,
       paymentAccountId,
       notes: str(formData, "notes") || null,
+      replacesId: str(formData, "replacesId") || null,
     },
   });
+
+  // If this loan supersedes another (e.g. a balloon refinanced into new terms),
+  // close the old one so it stops expecting payments — history is preserved.
+  const replacesId = str(formData, "replacesId");
+  if (replacesId) {
+    await prisma.loan.update({
+      where: { id: replacesId },
+      data: {
+        status: "CLOSED",
+        closedAt: new Date(),
+        closureNote: `Refinanced/replaced by "${name}".`,
+      },
+    });
+  }
 
   // Optionally post the loan funds arriving (new borrowing, not an existing loan).
   if (str(formData, "postDisbursement") === "on") {
@@ -777,6 +792,31 @@ export async function deleteLoan(formData: FormData) {
   await prisma.loan.delete({ where: { id: str(formData, "id") } });
   revalidatePath("/loans");
   redirect("/loans");
+}
+
+/** Close (satisfy/retire) a loan — keeps its history but stops payment tracking. */
+export async function closeLoan(formData: FormData) {
+  const id = str(formData, "id");
+  await prisma.loan.update({
+    where: { id },
+    data: {
+      status: "CLOSED",
+      closedAt: new Date(),
+      closureNote: str(formData, "closureNote") || null,
+    },
+  });
+  revalidatePath("/loans");
+  revalidatePath(`/loans/${id}`);
+}
+
+export async function reopenLoan(formData: FormData) {
+  const id = str(formData, "id");
+  await prisma.loan.update({
+    where: { id },
+    data: { status: "ACTIVE", closedAt: null, closureNote: null },
+  });
+  revalidatePath("/loans");
+  revalidatePath(`/loans/${id}`);
 }
 
 export async function recordLoanPayment(

@@ -6,9 +6,13 @@ import { toDateInput, todayUTC } from "../../../lib/money";
 
 export default async function NewLoanPage() {
   const business = await requireBusiness();
-  const [accounts, contacts] = await Promise.all([
+  const [accounts, contacts, activeLoans] = await Promise.all([
     prisma.account.findMany({ where: { businessId: business.id, isArchived: false } }),
     prisma.contact.findMany({ where: { businessId: business.id }, orderBy: { name: "asc" } }),
+    prisma.loan.findMany({
+      where: { businessId: business.id, status: { not: "CLOSED" } },
+      orderBy: { name: "asc" },
+    }),
   ]);
   const assetOptions = flattenAccounts(accounts.filter((a) => a.type === "ASSET"));
   const liabilityOptions = flattenAccounts(accounts.filter((a) => a.type === "LIABILITY"));
@@ -99,6 +103,23 @@ export default async function NewLoanPage() {
             Post disbursement (new loan, funds received)
           </label>
         </div>
+        {activeLoans.length > 0 && (
+          <div className="sm:col-span-3">
+            <label className="label">Replaces loan (balloon refinance / renegotiated terms)</label>
+            <select name="replacesId" className="input sm:max-w-md" defaultValue="">
+              <option value="">— none —</option>
+              {activeLoans.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.name}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1 text-xs text-zinc-500">
+              If set, the selected loan is closed (history kept) and linked as this loan&apos;s
+              predecessor.
+            </p>
+          </div>
+        )}
         <div className="sm:col-span-3">
           <button className="btn btn-primary">Create loan</button>
         </div>

@@ -55,6 +55,10 @@ model Loan {
   interestAccountId  String
   paymentAccountId   String
   notes              String?
+  status             String   @default("ACTIVE") // ACTIVE | CLOSED
+  closedAt           DateTime?
+  closureNote        String?
+  replacesId         String? // the loan this one supersedes (e.g. a balloon refinance)
   createdAt          DateTime @default(now())
 
   business         Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
@@ -63,6 +67,8 @@ model Loan {
   interestAccount  Account       @relation("LoanInterestAccount", fields: [interestAccountId], references: [id])
   paymentAccount   Account       @relation("LoanPaymentAccount", fields: [paymentAccountId], references: [id])
   payments         LoanPayment[]
+  replaces         Loan?         @relation("LoanSuccession", fields: [replacesId], references: [id], onDelete: SetNull)
+  replacedBy       Loan[]        @relation("LoanSuccession")
 }
 
 model LoanPayment {
