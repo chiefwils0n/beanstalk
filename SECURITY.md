@@ -10,17 +10,27 @@ privately via [GitHub Security Advisories](https://github.com/chiefwils0n/beanst
 (Security → Report a vulnerability). Include steps to reproduce and the
 affected version/commit. You'll get an acknowledgement and a fix timeline.
 
-## Important deployment note: no built-in authentication
+## Authentication
 
-Beanstalk currently has **no user authentication or login**. Anyone who can
-reach the running server has full read/write access to the books. This is by
-design for single-user, private deployments.
+Beanstalk has an **optional single-password gate**, off by default:
 
-**Do not expose a Beanstalk instance directly to the public internet.** Run it:
+- Set `AUTH_PASSWORD` in `.env` to require a password to access the app. The
+  session is a stateless, HMAC-signed, httpOnly cookie (no database).
+- Leave `AUTH_PASSWORD` unset to run open — appropriate only on `localhost` or
+  a trusted private network.
 
-- on `localhost` only, or
+There is **no multi-user system**; it's one shared password per instance.
+
+**Still, do not expose an open instance directly to the public internet.** Even
+with the password gate enabled, defense-in-depth is recommended:
+
+- run on `localhost` only, or
 - behind a private network / VPN (e.g. Tailscale), or
 - behind a reverse proxy that enforces authentication (HTTP basic auth, SSO, etc.).
+
+The session cookie omits the `Secure` flag so login works over plain HTTP
+(localhost / VPN). If you serve Beanstalk over HTTPS, front it with a proxy or
+adjust the cookie to set `Secure`.
 
 ## Data handling
 
