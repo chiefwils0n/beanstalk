@@ -26,6 +26,7 @@ export default async function ContactTypesPage() {
           <thead>
             <tr>
               <th className="th">Type</th>
+              <th className="th">Color</th>
               <th className="th text-right">Contacts</th>
               <th className="th" />
             </tr>
@@ -36,8 +37,23 @@ export default async function ContactTypesPage() {
                 <td className="td">
                   <form action={updateContactType} className="flex items-center gap-2" id={`ct-${type.id}`}>
                     <input type="hidden" name="id" value={type.id} />
-                    <input name="name" defaultValue={type.name} className="input max-w-64" />
+                    <span
+                      className="badge text-white"
+                      style={{ backgroundColor: type.color }}
+                    >
+                      {type.name.toLowerCase()}
+                    </span>
+                    <input name="name" defaultValue={type.name} className="input max-w-56" />
                   </form>
+                </td>
+                <td className="td">
+                  <input
+                    type="color"
+                    name="color"
+                    defaultValue={type.color}
+                    form={`ct-${type.id}`}
+                    className="h-8 w-12 cursor-pointer rounded border border-zinc-300 dark:border-zinc-700"
+                  />
                 </td>
                 <td className="td text-right">{type._count.contacts}</td>
                 <td className="td text-right">
@@ -65,6 +81,15 @@ export default async function ContactTypesPage() {
           <div>
             <label className="label">Name</label>
             <input name="name" required className="input" placeholder="e.g. Tenant, Lead, Lender" />
+          </div>
+          <div>
+            <label className="label">Color</label>
+            <input
+              type="color"
+              name="color"
+              defaultValue="#0ea5e9"
+              className="h-8 w-12 cursor-pointer rounded border border-zinc-300 dark:border-zinc-700"
+            />
           </div>
           <button className="btn btn-primary">Add type</button>
         </form>

@@ -38,7 +38,7 @@ export default async function ContactPage({ params }: { params: Promise<{ id: st
         <h1 className="page-title mt-1">
           {contact.name}
           {contact.type && (
-            <span className="badge ml-2 bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
+            <span className="badge ml-2 text-white" style={{ backgroundColor: contact.type.color }}>
               {contact.type.name.toLowerCase()}
             </span>
           )}

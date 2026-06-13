@@ -347,7 +347,9 @@ export async function createContactType(formData: FormData) {
   const business = await requireBusiness();
   const name = str(formData, "name");
   if (!name) throw new Error("Type name is required");
-  await prisma.contactType.create({ data: { businessId: business.id, name } });
+  await prisma.contactType.create({
+    data: { businessId: business.id, name, color: str(formData, "color") || "#0ea5e9" },
+  });
   revalidatePath("/settings/contact-types");
   revalidatePath("/contacts");
 }
@@ -356,7 +358,10 @@ export async function updateContactType(formData: FormData) {
   const id = str(formData, "id");
   const name = str(formData, "name");
   if (!name) throw new Error("Type name is required");
-  await prisma.contactType.update({ where: { id }, data: { name } });
+  await prisma.contactType.update({
+    where: { id },
+    data: { name, color: str(formData, "color") || "#0ea5e9" },
+  });
   revalidatePath("/settings/contact-types");
   revalidatePath("/contacts");
 }

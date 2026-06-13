@@ -102,7 +102,7 @@ export default async function ContactsPage({
                   </td>
                   <td className="td">
                     {contact.type && (
-                      <span className="badge bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300">
+                      <span className="badge text-white" style={{ backgroundColor: contact.type.color }}>
                         {contact.type.name.toLowerCase()}
                       </span>
                     )}
