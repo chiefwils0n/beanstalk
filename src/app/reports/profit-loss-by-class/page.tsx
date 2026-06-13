@@ -149,13 +149,13 @@ function TotalRow({
 export default async function ProfitLossByClassPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string; period?: string }>;
+  searchParams: Promise<{ from?: string; to?: string; period?: string; n?: string }>;
 }) {
   const business = await requireBusiness();
   const sp = await searchParams;
   const today = todayUTC();
   const todayIso = toDateInput(today);
-  const resolved = resolvePeriod(sp.period, sp.from, sp.to, todayIso, business.fiscalYearStart);
+  const resolved = resolvePeriod(sp.period, sp.from, sp.to, todayIso, business.fiscalYearStart, sp.n ? Number(sp.n) : undefined);
   let from: Date | undefined;
   let to: Date;
   if (resolved.period !== "custom") {
@@ -190,6 +190,7 @@ export default async function ProfitLossByClassPage({
           defaultPeriod={resolved.period}
           defaultFrom={from ? toDateInput(from) : ""}
           defaultTo={toDateInput(to)}
+          defaultN={resolved.n}
         />
         <button className="btn">Run report</button>
       </form>

@@ -9,12 +9,12 @@ import { ReportPeriodFields } from "../../../components/ReportPeriodFields";
 export default async function TrialBalancePage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string; period?: string }>;
+  searchParams: Promise<{ from?: string; to?: string; period?: string; n?: string }>;
 }) {
   const business = await requireBusiness();
   const sp = await searchParams;
   const todayIso = toDateInput(todayUTC());
-  const resolved = resolvePeriod(sp.period, sp.from, sp.to, todayIso, business.fiscalYearStart);
+  const resolved = resolvePeriod(sp.period, sp.from, sp.to, todayIso, business.fiscalYearStart, sp.n ? Number(sp.n) : undefined);
   const from = resolved.from ? parseDate(resolved.from) : undefined;
   const to = resolved.to ? parseDate(resolved.to) : undefined;
   const report = await trialBalance(business.id, from, to);
@@ -44,6 +44,7 @@ export default async function TrialBalancePage({
           defaultPeriod={resolved.period}
           defaultFrom={from ? toDateInput(from) : ""}
           defaultTo={to ? toDateInput(to) : ""}
+          defaultN={resolved.n}
         />
         <button className="btn">Run report</button>
       </form>

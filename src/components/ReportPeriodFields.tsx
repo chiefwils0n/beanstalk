@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { PERIOD_OPTIONS, periodRange, type PeriodKey } from "../lib/periods";
+import { PERIOD_GROUPS, NEEDS_N, periodRange } from "../lib/periods";
 
 /**
  * Period preset + From/To date inputs for report filter forms. Picking a preset
  * fills the dates instantly (using the server-provided `today` so client/server
- * agree); editing a date switches the preset to "Custom". Submits `period`,
- * `from`, and `to` — the server recomputes named periods authoritatively.
+ * agree); LAST_N_* presets reveal a count input; editing a date switches to
+ * "Custom". Submits `period`, `n`, `from`, `to` — the server recomputes named
+ * periods authoritatively.
  */
 export function ReportPeriodFields({
   today,
@@ -15,22 +16,23 @@ export function ReportPeriodFields({
   defaultPeriod = "custom",
   defaultFrom = "",
   defaultTo = "",
+  defaultN = 30,
 }: {
   today: string;
   fiscalStartMonth: number;
   defaultPeriod?: string;
   defaultFrom?: string;
   defaultTo?: string;
+  defaultN?: number;
 }) {
-  const [period, setPeriod] = useState<PeriodKey>(defaultPeriod as PeriodKey);
+  const [period, setPeriod] = useState(defaultPeriod);
   const [from, setFrom] = useState(defaultFrom);
   const [to, setTo] = useState(defaultTo);
+  const [n, setN] = useState(defaultN);
 
-  function onPeriod(value: string) {
-    const key = value as PeriodKey;
-    setPeriod(key);
-    if (key === "custom") return; // leave the dates for manual editing
-    const range = periodRange(key, today, fiscalStartMonth);
+  function fill(key: string, count: number) {
+    if (key === "custom") return; // leave dates for manual editing
+    const range = periodRange(key, today, fiscalStartMonth, count);
     if (!range) return;
     setFrom(range.from ?? "");
     setTo(range.to ?? "");
@@ -43,16 +45,40 @@ export function ReportPeriodFields({
         <select
           name="period"
           value={period}
-          onChange={(e) => onPeriod(e.target.value)}
+          onChange={(e) => {
+            setPeriod(e.target.value);
+            fill(e.target.value, n);
+          }}
           className="input"
         >
-          {PERIOD_OPTIONS.map((o) => (
-            <option key={o.key} value={o.key}>
-              {o.label}
-            </option>
+          {PERIOD_GROUPS.map((group) => (
+            <optgroup key={group.label} label={group.label}>
+              {group.options.map((o) => (
+                <option key={o.key} value={o.key}>
+                  {o.label}
+                </option>
+              ))}
+            </optgroup>
           ))}
         </select>
       </div>
+      {NEEDS_N.has(period) && (
+        <div>
+          <label className="label">N</label>
+          <input
+            type="number"
+            name="n"
+            min={1}
+            value={n}
+            onChange={(e) => {
+              const count = Number(e.target.value) || 1;
+              setN(count);
+              fill(period, count);
+            }}
+            className="input w-20"
+          />
+        </div>
+      )}
       <div>
         <label className="label">From</label>
         <input

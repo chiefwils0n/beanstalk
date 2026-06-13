@@ -10,7 +10,7 @@ import { ReportPeriodFields } from "../../../components/ReportPeriodFields";
 export default async function GeneralLedgerPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string; account?: string; class?: string; contact?: string; period?: string }>;
+  searchParams: Promise<{ from?: string; to?: string; account?: string; class?: string; contact?: string; period?: string; n?: string }>;
 }) {
   const business = await requireBusiness();
   const sp = await searchParams;
@@ -18,7 +18,7 @@ export default async function GeneralLedgerPage({
   const todayIso = toDateInput(today);
   // Named period wins; otherwise explicit from/to (drill links pass these, no
   // period). No "from" means all-time (balance-sheet drills need full history).
-  const resolved = resolvePeriod(sp.period, sp.from, sp.to, todayIso, business.fiscalYearStart);
+  const resolved = resolvePeriod(sp.period, sp.from, sp.to, todayIso, business.fiscalYearStart, sp.n ? Number(sp.n) : undefined);
   const from = resolved.from ? parseDate(resolved.from) : undefined;
   const to = resolved.to ? parseDate(resolved.to) : today;
 
@@ -112,6 +112,7 @@ export default async function GeneralLedgerPage({
           defaultPeriod={resolved.period}
           defaultFrom={from ? toDateInput(from) : ""}
           defaultTo={toDateInput(to)}
+          defaultN={resolved.n}
         />
         <button className="btn">Run report</button>
       </form>
