@@ -231,9 +231,23 @@ export async function createEntry(input: EntryInput): Promise<{ error?: string }
   return {};
 }
 
+const RECONCILED_EDIT_MESSAGE =
+  "This transaction is part of a completed reconciliation and can't be changed. Undo the reconciliation first (Reconcile → Past reconciliations → Undo).";
+
 export async function updateEntry(id: string, input: EntryInput): Promise<{ error?: string }> {
   const result = validateEntry(input);
   if ("error" in result) return { error: result.error };
+  // Editing recreates the lines, which would wipe reconcile status. Reconciled
+  // transactions are locked; for cleared (not yet reconciled) lines we preserve
+  // the flag by re-applying it to the new line on the same account.
+  const existing = await prisma.journalLine.findMany({
+    where: { entryId: id },
+    select: { accountId: true, cleared: true },
+  });
+  if (existing.some((l) => l.cleared === "RECONCILED")) return { error: RECONCILED_EDIT_MESSAGE };
+  const clearedAccounts = new Set(
+    existing.filter((l) => l.cleared === "CLEARED").map((l) => l.accountId)
+  );
   await prisma.$transaction([
     prisma.journalLine.deleteMany({ where: { entryId: id } }),
     prisma.entryTag.deleteMany({ where: { entryId: id } }),
@@ -243,7 +257,12 @@ export async function updateEntry(id: string, input: EntryInput): Promise<{ erro
         date: parseDate(input.date),
         memo: input.memo.trim(),
         reference: input.reference?.trim() || null,
-        lines: { create: result.lines },
+        lines: {
+          create: result.lines.map((l) => ({
+            ...l,
+            cleared: clearedAccounts.has(l.accountId) ? "CLEARED" : undefined,
+          })),
+        },
         tags: { create: input.tagIds.map((tagId) => ({ tagId })) },
       },
     }),
@@ -253,8 +272,17 @@ export async function updateEntry(id: string, input: EntryInput): Promise<{ erro
   return {};
 }
 
+/** Reject mutating an entry that is part of a completed reconciliation. */
+async function assertNotReconciled(entryId: string) {
+  const count = await prisma.journalLine.count({
+    where: { entryId, cleared: "RECONCILED" },
+  });
+  if (count > 0) throw new Error(RECONCILED_EDIT_MESSAGE);
+}
+
 export async function voidEntry(formData: FormData) {
   const id = str(formData, "id");
+  await assertNotReconciled(id);
   await prisma.journalEntry.update({ where: { id }, data: { status: "VOID" } });
   revalidatePath("/transactions");
   revalidatePath("/");
@@ -262,6 +290,7 @@ export async function voidEntry(formData: FormData) {
 
 export async function deleteEntry(formData: FormData) {
   const id = str(formData, "id");
+  await assertNotReconciled(id);
   await prisma.journalEntry.delete({ where: { id } });
   revalidatePath("/transactions");
   revalidatePath("/");
