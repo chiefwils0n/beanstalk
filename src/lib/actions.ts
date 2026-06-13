@@ -9,6 +9,7 @@ import { seedChartOfAccounts } from "./coa";
 import { parseDate, parseMoney } from "./money";
 import { postOccurrence, runDueRecurring, advanceDate } from "./recurring";
 import { standardPayment, monthlyRate } from "./loans";
+import { checkBalanced } from "./ledger";
 
 function str(formData: FormData, key: string): string {
   return String(formData.get(key) ?? "").trim();
@@ -205,16 +206,8 @@ function validateEntry(input: EntryInput) {
   const lines = input.lines
     .filter((l) => l.accountId && (l.debit !== 0 || l.credit !== 0))
     .map((l) => ({ ...l, classId: l.classId || undefined, contactId: l.contactId || undefined }));
-  if (lines.length < 2) return { error: "An entry needs at least two non-zero lines" };
-  for (const line of lines) {
-    if (line.debit < 0 || line.credit < 0) return { error: "Amounts must be positive" };
-    if (line.debit > 0 && line.credit > 0)
-      return { error: "A line can have a debit or a credit, not both" };
-  }
-  const totalDebit = lines.reduce((s, l) => s + l.debit, 0);
-  const totalCredit = lines.reduce((s, l) => s + l.credit, 0);
-  if (totalDebit !== totalCredit)
-    return { error: `Entry is out of balance: debits ${totalDebit} ≠ credits ${totalCredit}` };
+  const balanceError = checkBalanced(lines);
+  if (balanceError) return { error: balanceError };
   if (!input.memo.trim()) return { error: "Memo is required" };
   return { lines };
 }

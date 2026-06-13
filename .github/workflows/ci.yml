@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    env:
+      # Builds/typechecks never connect, but Prisma wants the var present.
+      DATABASE_URL: "file:./ci.db"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # npm ci runs the postinstall (prisma generate)
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test
+
+      # Prove every migration applies cleanly to an empty database.
+      - name: Migrations apply from scratch
+        run: npx prisma migrate deploy
+
+      - name: Build (includes TypeScript type-check)
+        run: npm run build
