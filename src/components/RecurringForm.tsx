@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createRecurring } from "../lib/actions";
+import { createRecurring, updateRecurring, type RecurringInput } from "../lib/actions";
 import { parseMoney, formatMoney } from "../lib/money";
 import { FREQUENCIES, FREQUENCY_LABELS, type Frequency } from "../lib/types";
 import { ContactSelect, type AccountOption, type ClassOption, type ContactOption, type LineState } from "./EntryForm";
@@ -24,30 +24,47 @@ function safeCents(value: string): number {
   }
 }
 
+export type RecurringInitial = {
+  name: string;
+  memo: string;
+  frequency: Frequency;
+  interval: string;
+  startDate: string;
+  endDate: string;
+  autoPost: boolean;
+  lines: LineState[];
+};
+
 export function RecurringForm({
   accounts,
   classes,
   contacts,
   defaultDate,
+  recurringId,
+  initial,
 }: {
   accounts: AccountOption[];
   classes: ClassOption[];
   contacts: ContactOption[];
   defaultDate: string;
+  recurringId?: string;
+  initial?: RecurringInitial;
 }) {
   const hasClasses = classes.length > 0;
   const hasContacts = contacts.length > 0;
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [name, setName] = useState("");
-  const [memo, setMemo] = useState("");
-  const [frequency, setFrequency] = useState<Frequency>("MONTHLY");
-  const [interval, setInterval] = useState("1");
-  const [startDate, setStartDate] = useState(defaultDate);
-  const [endDate, setEndDate] = useState("");
-  const [autoPost, setAutoPost] = useState(true);
-  const [lines, setLines] = useState<LineState[]>([emptyLine(), emptyLine()]);
+  const [name, setName] = useState(initial?.name ?? "");
+  const [memo, setMemo] = useState(initial?.memo ?? "");
+  const [frequency, setFrequency] = useState<Frequency>(initial?.frequency ?? "MONTHLY");
+  const [interval, setInterval] = useState(initial?.interval ?? "1");
+  const [startDate, setStartDate] = useState(initial?.startDate ?? defaultDate);
+  const [endDate, setEndDate] = useState(initial?.endDate ?? "");
+  const [autoPost, setAutoPost] = useState(initial?.autoPost ?? true);
+  const [lines, setLines] = useState<LineState[]>(
+    initial?.lines?.length ? initial.lines : [emptyLine(), emptyLine()]
+  );
 
   const setLine = (i: number, patch: Partial<LineState>) =>
     setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
@@ -58,24 +75,27 @@ export function RecurringForm({
 
   const submit = () => {
     setError(null);
+    const payload: RecurringInput = {
+      name,
+      memo,
+      frequency,
+      interval: Number(interval || 1),
+      startDate,
+      endDate: endDate || undefined,
+      autoPost,
+      lines: lines.map((l) => ({
+        accountId: l.accountId,
+        classId: l.classId || undefined,
+        contactId: l.contactId || undefined,
+        description: l.description || undefined,
+        debit: safeCents(l.debit) || 0,
+        credit: safeCents(l.credit) || 0,
+      })),
+    };
     startTransition(async () => {
-      const result = await createRecurring({
-        name,
-        memo,
-        frequency,
-        interval: Number(interval || 1),
-        startDate,
-        endDate: endDate || undefined,
-        autoPost,
-        lines: lines.map((l) => ({
-          accountId: l.accountId,
-          classId: l.classId || undefined,
-          contactId: l.contactId || undefined,
-          description: l.description || undefined,
-          debit: safeCents(l.debit) || 0,
-          credit: safeCents(l.credit) || 0,
-        })),
-      });
+      const result = recurringId
+        ? await updateRecurring(recurringId, payload)
+        : await createRecurring(payload);
       if (result.error) {
         setError(result.error);
         return;
@@ -127,7 +147,7 @@ export function RecurringForm({
           </div>
         </div>
         <div>
-          <label className="label">First run</label>
+          <label className="label">{recurringId ? "Next run" : "First run"}</label>
           <input type="date" className="input" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
         </div>
         <div>
@@ -251,7 +271,7 @@ export function RecurringForm({
 
       <div className="flex items-center gap-3">
         <button className="btn btn-primary" disabled={pending || !balanced} onClick={submit}>
-          {pending ? "Saving…" : "Create recurring transaction"}
+          {pending ? "Saving…" : recurringId ? "Save changes" : "Create recurring transaction"}
         </button>
         {!balanced && totalDebit + totalCredit > 0 && (
           <span className="text-sm text-amber-600 dark:text-amber-400">

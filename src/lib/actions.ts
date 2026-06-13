@@ -576,6 +576,38 @@ export async function createRecurring(input: RecurringInput): Promise<{ error?: 
   return {};
 }
 
+export async function updateRecurring(
+  id: string,
+  input: RecurringInput
+): Promise<{ error?: string }> {
+  if (!input.name.trim()) return { error: "Name is required" };
+  const lines = input.lines
+    .filter((l) => l.accountId && (l.debit !== 0 || l.credit !== 0))
+    .map((l) => ({ ...l, classId: l.classId || undefined, contactId: l.contactId || undefined }));
+  if (lines.length < 2) return { error: "A recurring transaction needs at least two non-zero lines" };
+  const totalDebit = lines.reduce((s, l) => s + l.debit, 0);
+  const totalCredit = lines.reduce((s, l) => s + l.credit, 0);
+  if (totalDebit !== totalCredit) return { error: "Recurring transaction is out of balance" };
+  await prisma.$transaction([
+    prisma.recurringLine.deleteMany({ where: { recurringId: id } }),
+    prisma.recurringTransaction.update({
+      where: { id },
+      data: {
+        name: input.name.trim(),
+        memo: input.memo?.trim() || null,
+        frequency: input.frequency,
+        interval: Math.max(1, Math.round(input.interval)),
+        nextRun: parseDate(input.startDate),
+        endDate: input.endDate ? parseDate(input.endDate) : null,
+        autoPost: input.autoPost,
+        lines: { create: lines },
+      },
+    }),
+  ]);
+  revalidatePath("/settings/recurring");
+  return {};
+}
+
 export async function toggleRecurring(formData: FormData) {
   const id = str(formData, "id");
   const recurring = await prisma.recurringTransaction.findUniqueOrThrow({ where: { id } });

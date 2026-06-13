@@ -64,7 +64,9 @@ export default async function RecurringPage() {
               return (
                 <tr key={r.id} className={!r.isActive ? "opacity-50" : ""}>
                   <td className="td">
-                    <span className="font-medium">{r.name}</span>
+                    <Link href={`/settings/recurring/${r.id}`} className="font-medium hover:underline">
+                      {r.name}
+                    </Link>
                     {!r.isActive && (
                       <span className="badge ml-2 bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
                         paused
