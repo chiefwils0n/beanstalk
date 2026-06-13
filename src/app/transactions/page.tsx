@@ -2,6 +2,7 @@ import Link from "next/link";
 import { prisma } from "../../lib/db";
 import { requireBusiness } from "../../lib/business";
 import { flattenAccounts } from "../../lib/accounting";
+import { flattenContacts, contactWithDescendants } from "../../lib/contacts";
 import { formatMoney, formatDate, parseDate, parseMoney } from "../../lib/money";
 
 export default async function TransactionsPage({
@@ -14,11 +15,12 @@ export default async function TransactionsPage({
     q?: string;
     account?: string;
     class?: string;
+    contact?: string;
     amount?: string;
   }>;
 }) {
   const business = await requireBusiness();
-  const { from, to, tag, q, account, class: classFilter, amount } = await searchParams;
+  const { from, to, tag, q, account, class: classFilter, contact, amount } = await searchParams;
 
   let amountCents: number | null = null;
   try {
@@ -27,17 +29,22 @@ export default async function TransactionsPage({
     amountCents = null;
   }
 
+  // Filtering by a contact includes its nested contacts (e.g. a household's tenants).
+  const contactIds = contact ? await contactWithDescendants(business.id, contact) : null;
+
   // Line-level filters are independent: an entry matches if it has a line on
-  // the account AND a line with the class AND a line equal to the amount.
+  // the account AND a line with the class AND a line for the name AND a line
+  // equal to the amount.
   const lineConditions = [
     account ? { lines: { some: { accountId: account } } } : null,
     classFilter ? { lines: { some: { classId: classFilter } } } : null,
+    contactIds ? { lines: { some: { contactId: { in: contactIds } } } } : null,
     amountCents !== null
       ? { lines: { some: { OR: [{ debit: amountCents }, { credit: amountCents }] } } }
       : null,
   ].filter((c): c is NonNullable<typeof c> => c !== null);
 
-  const [entries, tags, accounts, classes] = await Promise.all([
+  const [entries, tags, accounts, classes, contacts] = await Promise.all([
     prisma.journalEntry.findMany({
       where: {
         businessId: business.id,
@@ -56,6 +63,11 @@ export default async function TransactionsPage({
     prisma.tag.findMany({ where: { businessId: business.id }, orderBy: { name: "asc" } }),
     prisma.account.findMany({ where: { businessId: business.id } }),
     prisma.class.findMany({ where: { businessId: business.id }, orderBy: { name: "asc" } }),
+    prisma.contact.findMany({
+      where: { businessId: business.id },
+      include: { type: true },
+      orderBy: { name: "asc" },
+    }),
   ]);
 
   return (
@@ -95,6 +107,21 @@ export default async function TransactionsPage({
               {classes.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        {contacts.length > 0 && (
+          <div>
+            <label className="label">Name</label>
+            <select name="contact" defaultValue={contact ?? ""} className="input max-w-56">
+              <option value="">All names</option>
+              {flattenContacts(contacts).map((c) => (
+                <option key={c.id} value={c.id}>
+                  {" ".repeat(c.depth * 2)}
+                  {c.name}
+                  {c.typeName ? ` (${c.typeName.toLowerCase()})` : ""}
                 </option>
               ))}
             </select>
