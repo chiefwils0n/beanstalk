@@ -9,6 +9,7 @@ const TABS: [string, string][] = [
   ["Tags", "/settings/tags"],
   ["Classes", "/settings/classes"],
   ["Contact types", "/settings/contact-types"],
+  ["Audit log", "/settings/audit"],
   ["Backup", "/settings/backup"],
 ];
 

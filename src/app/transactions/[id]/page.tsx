@@ -7,6 +7,7 @@ import { voidEntry, deleteEntry } from "../../../lib/actions";
 import { formatDate, toDateInput, todayUTC } from "../../../lib/money";
 import { EntryForm } from "../../../components/EntryForm";
 import { ConfirmButton } from "../../../components/ConfirmButton";
+import { AuditList } from "../../../components/AuditList";
 
 export default async function TransactionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -16,7 +17,7 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
   });
   if (!entry) notFound();
 
-  const [accounts, tags, classes, contacts] = await Promise.all([
+  const [accounts, tags, classes, contacts, auditEvents] = await Promise.all([
     prisma.account.findMany({ where: { businessId: entry.businessId } }),
     prisma.tag.findMany({ where: { businessId: entry.businessId }, orderBy: { name: "asc" } }),
     prisma.class.findMany({ where: { businessId: entry.businessId }, orderBy: { name: "asc" } }),
@@ -25,6 +26,7 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
       include: { type: true },
       orderBy: { name: "asc" },
     }),
+    prisma.auditEvent.findMany({ where: { entryId: id }, orderBy: { createdAt: "desc" } }),
   ]);
 
   return (
@@ -102,6 +104,11 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
           })),
         }}
       />
+
+      <div className="card">
+        <h2 className="mb-2 font-semibold">History</h2>
+        <AuditList events={auditEvents} />
+      </div>
     </div>
   );
 }

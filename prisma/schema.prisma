@@ -27,6 +27,26 @@ model Business {
   documents       Document[]
   loans           Loan[]
   reconciliations Reconciliation[]
+  auditEvents     AuditEvent[]
+}
+
+// An immutable record of a change to a journal entry (created / updated /
+// voided / deleted). `entryId` is a plain reference, not a foreign key, so the
+// audit row survives after the entry is deleted.
+model AuditEvent {
+  id         String   @id @default(cuid())
+  businessId String
+  entryId    String?
+  action     String // CREATED | UPDATED | VOIDED | DELETED
+  memo       String
+  amount     Int      @default(0) // entry total (debits), cents
+  detail     String? // JSON snapshot of the entry at the time
+  createdAt  DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, createdAt])
+  @@index([entryId])
 }
 
 // User-defined contact categories (Customer, Vendor, Tenant, Lead, …).

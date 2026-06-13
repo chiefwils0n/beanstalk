@@ -6,7 +6,7 @@ import { cookies } from "next/headers";
 import { prisma } from "./db";
 import { BUSINESS_COOKIE, TXN_FILTER_COOKIE, requireBusiness } from "./business";
 import { seedChartOfAccounts } from "./coa";
-import { parseDate, parseMoney } from "./money";
+import { parseDate, parseMoney, toDateInput } from "./money";
 import { postOccurrence, runDueRecurring, advanceDate } from "./recurring";
 import { standardPayment, monthlyRate } from "./loans";
 import { checkBalanced } from "./ledger";
@@ -236,11 +236,54 @@ function validateEntry(input: EntryInput) {
   return { lines };
 }
 
+// Load shape for building an audit snapshot of an entry.
+const ENTRY_AUDIT_INCLUDE = {
+  lines: { include: { account: true, class: true, contact: true } },
+};
+
+type EntryForAudit = {
+  id: string;
+  businessId: string;
+  memo: string;
+  date: Date;
+  reference: string | null;
+  status: string;
+  lines: {
+    debit: number;
+    credit: number;
+    description: string | null;
+    account: { name: string };
+    class: { name: string } | null;
+    contact: { name: string } | null;
+  }[];
+};
+
+/** Append an immutable audit record for a change to a journal entry. */
+async function recordEntryAudit(action: string, entry: EntryForAudit) {
+  const amount = entry.lines.reduce((s, l) => s + l.debit, 0);
+  const detail = JSON.stringify({
+    date: toDateInput(entry.date),
+    reference: entry.reference,
+    status: entry.status,
+    lines: entry.lines.map((l) => ({
+      account: l.account.name,
+      debit: l.debit,
+      credit: l.credit,
+      class: l.class?.name ?? null,
+      contact: l.contact?.name ?? null,
+      description: l.description ?? null,
+    })),
+  });
+  await prisma.auditEvent.create({
+    data: { businessId: entry.businessId, entryId: entry.id, action, memo: entry.memo, amount, detail },
+  });
+}
+
 export async function createEntry(input: EntryInput): Promise<{ error?: string }> {
   const business = await requireBusiness();
   const result = validateEntry(input);
   if ("error" in result) return { error: result.error };
-  await prisma.journalEntry.create({
+  const created = await prisma.journalEntry.create({
     data: {
       businessId: business.id,
       date: parseDate(input.date),
@@ -249,7 +292,9 @@ export async function createEntry(input: EntryInput): Promise<{ error?: string }
       lines: { create: result.lines },
       tags: { create: input.tagIds.map((tagId) => ({ tagId })) },
     },
+    include: ENTRY_AUDIT_INCLUDE,
   });
+  await recordEntryAudit("CREATED", created);
   revalidatePath("/transactions");
   revalidatePath("/");
   return {};
@@ -291,6 +336,8 @@ export async function updateEntry(id: string, input: EntryInput): Promise<{ erro
       },
     }),
   ]);
+  const updated = await prisma.journalEntry.findUnique({ where: { id }, include: ENTRY_AUDIT_INCLUDE });
+  if (updated) await recordEntryAudit("UPDATED", updated);
   revalidatePath("/transactions");
   revalidatePath("/");
   return {};
@@ -308,6 +355,8 @@ export async function voidEntry(formData: FormData) {
   const id = str(formData, "id");
   await assertNotReconciled(id);
   await prisma.journalEntry.update({ where: { id }, data: { status: "VOID" } });
+  const voided = await prisma.journalEntry.findUnique({ where: { id }, include: ENTRY_AUDIT_INCLUDE });
+  if (voided) await recordEntryAudit("VOIDED", voided);
   revalidatePath("/transactions");
   revalidatePath("/");
 }
@@ -315,7 +364,9 @@ export async function voidEntry(formData: FormData) {
 export async function deleteEntry(formData: FormData) {
   const id = str(formData, "id");
   await assertNotReconciled(id);
+  const captured = await prisma.journalEntry.findUnique({ where: { id }, include: ENTRY_AUDIT_INCLUDE });
   await prisma.journalEntry.delete({ where: { id } });
+  if (captured) await recordEntryAudit("DELETED", captured);
   revalidatePath("/transactions");
   revalidatePath("/");
   redirect("/transactions");
