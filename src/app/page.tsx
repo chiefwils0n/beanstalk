@@ -39,33 +39,16 @@ export default async function Dashboard() {
     { label: "Total liabilities", value: bs.totalLiabilities, tone: "amber" },
   ];
 
-  // Static class strings per tone (Tailwind can't see dynamically-built names).
+  // Colored tint + left accent per tone; text stays neutral (black/white) for
+  // readability, matching the Chart of Accounts and report headers.
+  const labelText = "text-zinc-600 dark:text-zinc-400";
+  const valueText = "text-zinc-900 dark:text-zinc-100";
   const toneStyles: Record<string, { wrap: string; label: string; value: string }> = {
-    emerald: {
-      wrap: "border-l-emerald-500 bg-emerald-50 dark:bg-emerald-950/40",
-      label: "text-emerald-700 dark:text-emerald-300",
-      value: "text-emerald-900 dark:text-emerald-50",
-    },
-    rose: {
-      wrap: "border-l-rose-500 bg-rose-50 dark:bg-rose-950/40",
-      label: "text-rose-700 dark:text-rose-300",
-      value: "text-rose-900 dark:text-rose-50",
-    },
-    sky: {
-      wrap: "border-l-sky-500 bg-sky-50 dark:bg-sky-950/40",
-      label: "text-sky-700 dark:text-sky-300",
-      value: "text-sky-900 dark:text-sky-50",
-    },
-    indigo: {
-      wrap: "border-l-indigo-500 bg-indigo-50 dark:bg-indigo-950/40",
-      label: "text-indigo-700 dark:text-indigo-300",
-      value: "text-indigo-900 dark:text-indigo-50",
-    },
-    amber: {
-      wrap: "border-l-amber-500 bg-amber-50 dark:bg-amber-950/40",
-      label: "text-amber-700 dark:text-amber-300",
-      value: "text-amber-900 dark:text-amber-50",
-    },
+    emerald: { wrap: "border-l-emerald-500 bg-emerald-50 dark:bg-emerald-950/40", label: labelText, value: valueText },
+    rose: { wrap: "border-l-rose-500 bg-rose-50 dark:bg-rose-950/40", label: labelText, value: valueText },
+    sky: { wrap: "border-l-sky-500 bg-sky-50 dark:bg-sky-950/40", label: labelText, value: valueText },
+    indigo: { wrap: "border-l-indigo-500 bg-indigo-50 dark:bg-indigo-950/40", label: labelText, value: valueText },
+    amber: { wrap: "border-l-amber-500 bg-amber-50 dark:bg-amber-950/40", label: labelText, value: valueText },
   };
 
   return (
