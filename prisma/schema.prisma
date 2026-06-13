@@ -20,12 +20,13 @@ model Business {
   entries      JournalEntry[]
   tags         Tag[]
   classes      Class[]
-  contacts     Contact[]
-  contactTypes ContactType[]
-  invoices     Invoice[]
-  recurring    RecurringTransaction[]
-  documents    Document[]
-  loans        Loan[]
+  contacts        Contact[]
+  contactTypes    ContactType[]
+  invoices        Invoice[]
+  recurring       RecurringTransaction[]
+  documents       Document[]
+  loans           Loan[]
+  reconciliations Reconciliation[]
 }
 
 // User-defined contact categories (Customer, Vendor, Tenant, Lead, …).
@@ -114,6 +115,7 @@ model Account {
   loansAsLiability Loan[] @relation("LoanLiabilityAccount")
   loansAsInterest  Loan[] @relation("LoanInterestAccount")
   loansAsPayment   Loan[] @relation("LoanPaymentAccount")
+  reconciliations  Reconciliation[]
 
   @@index([businessId, type])
 }
@@ -142,23 +144,42 @@ model JournalEntry {
 }
 
 model JournalLine {
-  id          String  @id @default(cuid())
-  entryId     String
-  accountId   String
-  classId     String?
-  contactId   String?
-  description String?
-  debit       Int     @default(0) // cents
-  credit      Int     @default(0) // cents
+  id               String  @id @default(cuid())
+  entryId          String
+  accountId        String
+  classId          String?
+  contactId        String?
+  description      String?
+  debit            Int     @default(0) // cents
+  credit           Int     @default(0) // cents
+  cleared          String  @default("NONE") // NONE | CLEARED | RECONCILED
+  reconciliationId String?
 
-  entry   JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
-  account Account      @relation(fields: [accountId], references: [id])
-  class   Class?       @relation(fields: [classId], references: [id], onDelete: SetNull)
-  contact Contact?     @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  entry          JournalEntry    @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  account        Account         @relation(fields: [accountId], references: [id])
+  class          Class?          @relation(fields: [classId], references: [id], onDelete: SetNull)
+  contact        Contact?        @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  reconciliation Reconciliation? @relation(fields: [reconciliationId], references: [id], onDelete: SetNull)
 
   @@index([accountId])
   @@index([classId])
   @@index([contactId])
+}
+
+// A finished statement reconciliation for one bank/credit-card account.
+model Reconciliation {
+  id            String   @id @default(cuid())
+  businessId    String
+  accountId     String
+  statementDate DateTime
+  endingBalance Int // cents, signed by the account's normal balance
+  createdAt     DateTime @default(now())
+
+  business Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  account  Account       @relation(fields: [accountId], references: [id])
+  lines    JournalLine[]
+
+  @@index([businessId, accountId])
 }
 
 model Tag {

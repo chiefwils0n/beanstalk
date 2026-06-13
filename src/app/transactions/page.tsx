@@ -173,11 +173,19 @@ export default async function TransactionsPage({
                   {formatMoney(entry.lines.reduce((s, l) => s + l.debit, 0))}
                 </td>
                 <td className="td text-center">
-                  {entry.status === "VOID" && (
+                  {entry.status === "VOID" ? (
                     <span className="badge bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">
                       void
                     </span>
-                  )}
+                  ) : entry.lines.every((l) => l.cleared === "RECONCILED") ? (
+                    <span className="badge bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" title="All lines reconciled">
+                      R
+                    </span>
+                  ) : entry.lines.some((l) => l.cleared !== "NONE") ? (
+                    <span className="badge bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300" title="Has cleared lines">
+                      C
+                    </span>
+                  ) : null}
                 </td>
               </tr>
             ))}

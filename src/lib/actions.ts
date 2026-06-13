@@ -828,6 +828,95 @@ export async function deleteLoanPayment(formData: FormData) {
   revalidatePath("/transactions");
 }
 
+// ------------------------------------------------------------- reconciliation
+
+/** Persist cleared checkmarks without finishing the reconciliation. */
+export async function saveReconcileProgress(
+  clearedLineIds: string[],
+  unclearedLineIds: string[]
+): Promise<{ error?: string }> {
+  await prisma.$transaction([
+    prisma.journalLine.updateMany({
+      where: { id: { in: clearedLineIds }, cleared: { not: "RECONCILED" } },
+      data: { cleared: "CLEARED" },
+    }),
+    prisma.journalLine.updateMany({
+      where: { id: { in: unclearedLineIds }, cleared: "CLEARED" },
+      data: { cleared: "NONE" },
+    }),
+  ]);
+  revalidatePath("/reconcile");
+  revalidatePath("/transactions");
+  return {};
+}
+
+export async function finishReconciliation(input: {
+  accountId: string;
+  statementDate: string;
+  endingBalance: number; // cents, signed by the account's normal balance
+  clearedLineIds: string[];
+  unclearedLineIds: string[];
+}): Promise<{ error?: string }> {
+  const business = await requireBusiness();
+  const account = await prisma.account.findUniqueOrThrow({ where: { id: input.accountId } });
+  const { signedBalance } = await import("./types");
+
+  const reconciled = await prisma.journalLine.aggregate({
+    where: { accountId: input.accountId, cleared: "RECONCILED", entry: { status: "POSTED" } },
+    _sum: { debit: true, credit: true },
+  });
+  const beginning = signedBalance(
+    account.type,
+    reconciled._sum.debit ?? 0,
+    reconciled._sum.credit ?? 0
+  );
+  const clearing = await prisma.journalLine.aggregate({
+    where: { id: { in: input.clearedLineIds } },
+    _sum: { debit: true, credit: true },
+  });
+  const clearedSum = signedBalance(account.type, clearing._sum.debit ?? 0, clearing._sum.credit ?? 0);
+  if (beginning + clearedSum !== input.endingBalance) {
+    return {
+      error: `Difference is not zero: cleared balance is ${beginning + clearedSum} vs statement ${input.endingBalance}`,
+    };
+  }
+  const reconciliation = await prisma.reconciliation.create({
+    data: {
+      businessId: business.id,
+      accountId: input.accountId,
+      statementDate: parseDate(input.statementDate),
+      endingBalance: input.endingBalance,
+    },
+  });
+  await prisma.$transaction([
+    prisma.journalLine.updateMany({
+      where: { id: { in: input.clearedLineIds } },
+      data: { cleared: "RECONCILED", reconciliationId: reconciliation.id },
+    }),
+    prisma.journalLine.updateMany({
+      where: { id: { in: input.unclearedLineIds }, cleared: "CLEARED" },
+      data: { cleared: "NONE" },
+    }),
+  ]);
+  revalidatePath("/reconcile");
+  revalidatePath("/transactions");
+  return {};
+}
+
+/** Undo a finished reconciliation — its lines drop back to cleared. */
+export async function undoReconciliation(formData: FormData) {
+  const id = str(formData, "id");
+  await prisma.$transaction([
+    prisma.journalLine.updateMany({
+      where: { reconciliationId: id },
+      data: { cleared: "CLEARED", reconciliationId: null },
+    }),
+    prisma.reconciliation.delete({ where: { id } }),
+  ]);
+  revalidatePath("/reconcile");
+  revalidatePath("/transactions");
+}
+
 // ----------------------------------------------------------------- documents
 
 export async function deleteDocument(formData: FormData) {
