@@ -3,21 +3,34 @@ import { prisma } from "../../../lib/db";
 import { requireBusiness } from "../../../lib/business";
 import { profitAndLoss } from "../../../lib/accounting";
 import { formatMoney, parseDate, toDateInput, todayUTC } from "../../../lib/money";
+import { resolvePeriod } from "../../../lib/periods";
 import { ReportTreeRows } from "../../../components/ReportTree";
 import { ReportSectionHeader } from "../../../components/ReportSection";
+import { ReportPeriodFields } from "../../../components/ReportPeriodFields";
 
 export default async function ProfitLossPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string; class?: string }>;
+  searchParams: Promise<{ from?: string; to?: string; class?: string; period?: string }>;
 }) {
   const business = await requireBusiness();
   const sp = await searchParams;
   const today = todayUTC();
-  // No explicit "from" alongside an explicit "to" (e.g. drilling from the balance
-  // sheet's earnings-to-date) means all-time; otherwise default to year-to-date.
-  const from = sp.from ? parseDate(sp.from) : sp.to ? undefined : new Date(Date.UTC(today.getUTCFullYear(), 0, 1));
-  const to = sp.to ? parseDate(sp.to) : today;
+  const todayIso = toDateInput(today);
+  const resolved = resolvePeriod(sp.period, sp.from, sp.to, todayIso, business.fiscalYearStart);
+  let from: Date | undefined;
+  let to: Date;
+  if (resolved.period !== "custom") {
+    from = resolved.from ? parseDate(resolved.from) : undefined;
+    to = resolved.to ? parseDate(resolved.to) : today;
+  } else {
+    // No explicit "from" alongside an explicit "to" (e.g. drilling from the
+    // balance sheet's earnings-to-date) means all-time; else year-to-date.
+    from = sp.from ? parseDate(sp.from) : sp.to ? undefined : new Date(Date.UTC(today.getUTCFullYear(), 0, 1));
+    to = sp.to ? parseDate(sp.to) : today;
+  }
+  const fromIso = from ? toDateInput(from) : "";
+  const toIso = toDateInput(to);
   const classId = sp.class || undefined;
   const [report, classes] = await Promise.all([
     profitAndLoss(business.id, from, to, classId),
@@ -48,14 +61,13 @@ export default async function ProfitLossPage({
       </div>
 
       <form className="card flex flex-wrap items-end gap-3" method="GET">
-        <div>
-          <label className="label">From</label>
-          <input type="date" name="from" defaultValue={from ? toDateInput(from) : ""} className="input" />
-        </div>
-        <div>
-          <label className="label">To</label>
-          <input type="date" name="to" defaultValue={toDateInput(to)} className="input" />
-        </div>
+        <ReportPeriodFields
+          today={todayIso}
+          fiscalStartMonth={business.fiscalYearStart}
+          defaultPeriod={resolved.period}
+          defaultFrom={fromIso}
+          defaultTo={toIso}
+        />
         {classes.length > 0 && (
           <div>
             <label className="label">Class</label>

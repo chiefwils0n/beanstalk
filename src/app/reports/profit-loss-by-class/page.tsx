@@ -8,7 +8,9 @@ import {
   type ClassMatrixNode,
 } from "../../../lib/accounting";
 import { formatMoney, parseDate, toDateInput, todayUTC } from "../../../lib/money";
+import { resolvePeriod } from "../../../lib/periods";
 import { ReportSectionHeader } from "../../../components/ReportSection";
+import { ReportPeriodFields } from "../../../components/ReportPeriodFields";
 import { ledgerHref, type DrillRange } from "../../../components/ReportTree";
 
 /** A plain (non-drillable) money cell; blank for exactly zero. */
@@ -147,13 +149,22 @@ function TotalRow({
 export default async function ProfitLossByClassPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string }>;
+  searchParams: Promise<{ from?: string; to?: string; period?: string }>;
 }) {
   const business = await requireBusiness();
   const sp = await searchParams;
   const today = todayUTC();
-  const from = sp.from ? parseDate(sp.from) : sp.to ? undefined : new Date(Date.UTC(today.getUTCFullYear(), 0, 1));
-  const to = sp.to ? parseDate(sp.to) : today;
+  const todayIso = toDateInput(today);
+  const resolved = resolvePeriod(sp.period, sp.from, sp.to, todayIso, business.fiscalYearStart);
+  let from: Date | undefined;
+  let to: Date;
+  if (resolved.period !== "custom") {
+    from = resolved.from ? parseDate(resolved.from) : undefined;
+    to = resolved.to ? parseDate(resolved.to) : today;
+  } else {
+    from = sp.from ? parseDate(sp.from) : sp.to ? undefined : new Date(Date.UTC(today.getUTCFullYear(), 0, 1));
+    to = sp.to ? parseDate(sp.to) : today;
+  }
   const report = await profitAndLossByClass(business.id, from, to);
   const { columns } = report;
   // Account column + one per class + Total column.
@@ -173,14 +184,13 @@ export default async function ProfitLossByClassPage({
       </div>
 
       <form className="card flex flex-wrap items-end gap-3" method="GET">
-        <div>
-          <label className="label">From</label>
-          <input type="date" name="from" defaultValue={from ? toDateInput(from) : ""} className="input" />
-        </div>
-        <div>
-          <label className="label">To</label>
-          <input type="date" name="to" defaultValue={toDateInput(to)} className="input" />
-        </div>
+        <ReportPeriodFields
+          today={todayIso}
+          fiscalStartMonth={business.fiscalYearStart}
+          defaultPeriod={resolved.period}
+          defaultFrom={from ? toDateInput(from) : ""}
+          defaultTo={toDateInput(to)}
+        />
         <button className="btn">Run report</button>
       </form>
 

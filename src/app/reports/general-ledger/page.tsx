@@ -3,19 +3,24 @@ import { prisma } from "../../../lib/db";
 import { requireBusiness } from "../../../lib/business";
 import { flattenAccounts } from "../../../lib/accounting";
 import { formatMoney, formatDate, parseDate, toDateInput, todayUTC } from "../../../lib/money";
+import { resolvePeriod } from "../../../lib/periods";
 import { contactWithDescendants } from "../../../lib/contacts";
+import { ReportPeriodFields } from "../../../components/ReportPeriodFields";
 
 export default async function GeneralLedgerPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string; account?: string; class?: string; contact?: string }>;
+  searchParams: Promise<{ from?: string; to?: string; account?: string; class?: string; contact?: string; period?: string }>;
 }) {
   const business = await requireBusiness();
   const sp = await searchParams;
   const today = todayUTC();
-  // No "from" means all-time (balance-sheet drills need history from the first entry).
-  const from = sp.from ? parseDate(sp.from) : undefined;
-  const to = sp.to ? parseDate(sp.to) : today;
+  const todayIso = toDateInput(today);
+  // Named period wins; otherwise explicit from/to (drill links pass these, no
+  // period). No "from" means all-time (balance-sheet drills need full history).
+  const resolved = resolvePeriod(sp.period, sp.from, sp.to, todayIso, business.fiscalYearStart);
+  const from = resolved.from ? parseDate(resolved.from) : undefined;
+  const to = resolved.to ? parseDate(resolved.to) : today;
 
   const [accounts, classes, contacts, lines] = await Promise.all([
     prisma.account.findMany({ where: { businessId: business.id } }),
@@ -101,14 +106,13 @@ export default async function GeneralLedgerPage({
             </select>
           </div>
         )}
-        <div>
-          <label className="label">From (blank = all time)</label>
-          <input type="date" name="from" defaultValue={from ? toDateInput(from) : ""} className="input" />
-        </div>
-        <div>
-          <label className="label">To</label>
-          <input type="date" name="to" defaultValue={toDateInput(to)} className="input" />
-        </div>
+        <ReportPeriodFields
+          today={todayIso}
+          fiscalStartMonth={business.fiscalYearStart}
+          defaultPeriod={resolved.period}
+          defaultFrom={from ? toDateInput(from) : ""}
+          defaultTo={toDateInput(to)}
+        />
         <button className="btn">Run report</button>
       </form>
 

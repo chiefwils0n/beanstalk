@@ -1,18 +1,22 @@
 import Link from "next/link";
 import { requireBusiness } from "../../../lib/business";
 import { trialBalance } from "../../../lib/accounting";
-import { formatMoney, parseDate, toDateInput } from "../../../lib/money";
+import { formatMoney, parseDate, toDateInput, todayUTC } from "../../../lib/money";
+import { resolvePeriod } from "../../../lib/periods";
 import { ledgerHref } from "../../../components/ReportTree";
+import { ReportPeriodFields } from "../../../components/ReportPeriodFields";
 
 export default async function TrialBalancePage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string }>;
+  searchParams: Promise<{ from?: string; to?: string; period?: string }>;
 }) {
   const business = await requireBusiness();
   const sp = await searchParams;
-  const from = sp.from ? parseDate(sp.from) : undefined;
-  const to = sp.to ? parseDate(sp.to) : undefined;
+  const todayIso = toDateInput(todayUTC());
+  const resolved = resolvePeriod(sp.period, sp.from, sp.to, todayIso, business.fiscalYearStart);
+  const from = resolved.from ? parseDate(resolved.from) : undefined;
+  const to = resolved.to ? parseDate(resolved.to) : undefined;
   const report = await trialBalance(business.id, from, to);
 
   return (
@@ -34,14 +38,13 @@ export default async function TrialBalancePage({
       </div>
 
       <form className="card flex flex-wrap items-end gap-3" method="GET">
-        <div>
-          <label className="label">From (optional)</label>
-          <input type="date" name="from" defaultValue={from ? toDateInput(from) : ""} className="input" />
-        </div>
-        <div>
-          <label className="label">To (optional)</label>
-          <input type="date" name="to" defaultValue={to ? toDateInput(to) : ""} className="input" />
-        </div>
+        <ReportPeriodFields
+          today={todayIso}
+          fiscalStartMonth={business.fiscalYearStart}
+          defaultPeriod={resolved.period}
+          defaultFrom={from ? toDateInput(from) : ""}
+          defaultTo={to ? toDateInput(to) : ""}
+        />
         <button className="btn">Run report</button>
       </form>
 
