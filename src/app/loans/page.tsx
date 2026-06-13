@@ -1,14 +1,17 @@
 import Link from "next/link";
 import { prisma } from "../../lib/db";
 import { requireBusiness } from "../../lib/business";
-import { loanState } from "../../lib/loans";
+import { loanState, derivePayments } from "../../lib/loans";
 import { formatMoney, formatDate } from "../../lib/money";
 
 export default async function LoansPage() {
   const business = await requireBusiness();
   const loans = await prisma.loan.findMany({
     where: { businessId: business.id },
-    include: { payments: { orderBy: { date: "asc" } }, lender: true },
+    include: {
+      payments: { orderBy: { date: "asc" }, include: { entry: { include: { lines: true } } } },
+      lender: true,
+    },
     orderBy: { createdAt: "asc" },
   });
 
@@ -30,7 +33,7 @@ export default async function LoansPage() {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {loans.map((loan) => {
-          const state = loanState(loan, loan.payments);
+          const state = loanState(loan, derivePayments(loan, loan.payments));
           const progress = loan.principal > 0 ? state.paidPrincipal / loan.principal : 0;
           return (
             <Link key={loan.id} href={`/loans/${loan.id}`} className="card hover:border-emerald-400 dark:hover:border-emerald-600">

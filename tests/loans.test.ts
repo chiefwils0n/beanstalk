@@ -6,6 +6,7 @@ import {
   addMonthsUTC,
   nextPaymentSplit,
   loanState,
+  derivePayments,
 } from "../src/lib/loans";
 import { parseDate, toDateInput } from "../src/lib/money";
 
@@ -94,5 +95,48 @@ describe("loanState", () => {
     expect(state.paidInterest).toBe(57083);
     expect(state.balance).toBe(6900000 - 200417);
     expect(state.isPaidOff).toBe(false);
+  });
+});
+
+describe("derivePayments — ledger is the source of truth", () => {
+  const loan = { liabilityAccountId: "liab", interestAccountId: "int" };
+
+  it("derives principal/interest from the linked posted entry's lines", () => {
+    const [p] = derivePayments(loan, [
+      {
+        id: "p1", date: new Date("2026-01-10T00:00:00Z"), principal: 999, interest: 999, extra: 0, entryId: "e1",
+        entry: {
+          status: "POSTED",
+          date: new Date("2026-01-10T00:00:00Z"),
+          lines: [
+            { accountId: "liab", debit: 20450, credit: 0 }, // principal
+            { accountId: "int", debit: 33794, credit: 0 },  // interest
+            { accountId: "cash", debit: 0, credit: 54244 },
+          ],
+        },
+      },
+    ]);
+    // stored snapshot was 999/999 but the ledger says otherwise
+    expect(p.principal).toBe(20450);
+    expect(p.interest).toBe(33794);
+  });
+
+  it("counts a voided entry as zero", () => {
+    const [p] = derivePayments(loan, [
+      {
+        id: "p1", date: new Date("2026-01-10T00:00:00Z"), principal: 20450, interest: 33794, extra: 0, entryId: "e1",
+        entry: { status: "VOID", date: new Date("2026-01-10T00:00:00Z"), lines: [{ accountId: "liab", debit: 20450, credit: 0 }] },
+      },
+    ]);
+    expect(p.principal).toBe(0);
+    expect(p.interest).toBe(0);
+  });
+
+  it("falls back to the stored snapshot when no entry is linked", () => {
+    const [p] = derivePayments(loan, [
+      { id: "p1", date: new Date("2026-01-10T00:00:00Z"), principal: 11111, interest: 222, extra: 0, entryId: null, entry: null },
+    ]);
+    expect(p.principal).toBe(11111);
+    expect(p.interest).toBe(222);
   });
 });

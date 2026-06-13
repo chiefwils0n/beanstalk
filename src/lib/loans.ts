@@ -87,6 +87,62 @@ export type LoanLike = {
 
 export type PaymentLike = { principal: number; interest: number };
 
+export type DerivedPayment = {
+  id: string;
+  date: Date;
+  principal: number;
+  interest: number;
+  extra: number;
+  entryId: string | null;
+};
+
+type RawPaymentLine = { accountId: string; debit: number; credit: number };
+export type RawLoanPayment = {
+  id: string;
+  date: Date;
+  principal: number;
+  interest: number;
+  extra: number;
+  entryId: string | null;
+  entry: { status: string; date: Date; lines: RawPaymentLine[] } | null;
+};
+
+/**
+ * The ledger is the source of truth: derive each payment's principal/interest
+ * from its linked journal entry's lines (principal = debits to the loan's
+ * liability account, interest = debits to the interest account). Edits made to
+ * the entry in the register are reflected here. Falls back to the stored
+ * snapshot only when no posted entry is linked; a voided entry counts as zero.
+ */
+export function derivePayments(
+  loan: { liabilityAccountId: string; interestAccountId: string },
+  raw: RawLoanPayment[]
+): DerivedPayment[] {
+  return raw
+    .map((p): DerivedPayment => {
+      if (p.entry && p.entry.status === "POSTED") {
+        const sum = (accountId: string) =>
+          p.entry!.lines
+            .filter((l) => l.accountId === accountId)
+            .reduce((s, l) => s + l.debit - l.credit, 0);
+        return {
+          id: p.id,
+          date: p.entry.date,
+          principal: sum(loan.liabilityAccountId),
+          interest: sum(loan.interestAccountId),
+          extra: p.extra,
+          entryId: p.entryId,
+        };
+      }
+      if (p.entry) {
+        // entry exists but is voided — the payment no longer counts
+        return { id: p.id, date: p.date, principal: 0, interest: 0, extra: p.extra, entryId: p.entryId };
+      }
+      return { id: p.id, date: p.date, principal: p.principal, interest: p.interest, extra: p.extra, entryId: p.entryId };
+    })
+    .sort((a, b) => +a.date - +b.date);
+}
+
 /** Current position of a loan given its recorded payments. */
 export function loanState(loan: LoanLike, payments: PaymentLike[]) {
   const paidPrincipal = payments.reduce((s, p) => s + p.principal, 0);

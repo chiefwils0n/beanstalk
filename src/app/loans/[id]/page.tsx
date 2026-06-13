@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "../../../lib/db";
-import { loanState } from "../../../lib/loans";
+import { loanState, derivePayments } from "../../../lib/loans";
 import { deleteLoan, deleteLoanPayment } from "../../../lib/actions";
 import { formatMoney, formatDate, toDateInput, todayUTC } from "../../../lib/money";
 import { PayoffChart, SplitChart } from "../../../components/LoanCharts";
@@ -14,7 +14,10 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
   const loan = await prisma.loan.findUnique({
     where: { id },
     include: {
-      payments: { orderBy: [{ date: "asc" }, { createdAt: "asc" }] },
+      payments: {
+        orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+        include: { entry: { include: { lines: true } } },
+      },
       lender: true,
       liabilityAccount: true,
       interestAccount: true,
@@ -23,10 +26,12 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
   });
   if (!loan) notFound();
 
-  const state = loanState(loan, loan.payments);
+  // Derive principal/interest live from the linked ledger entries.
+  const payments = derivePayments(loan, loan.payments);
+  const state = loanState(loan, payments);
   const historyBalances: number[] = [];
   let running = loan.principal;
-  for (const payment of loan.payments) {
+  for (const payment of payments) {
     running -= payment.principal;
     historyBalances.push(Math.max(running, 0));
   }
@@ -136,7 +141,7 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
               </tr>
             </thead>
             <tbody>
-              {loan.payments.map((payment, i) => (
+              {payments.map((payment, i) => (
                 <tr key={payment.id}>
                   <td className="td text-zinc-500">{i + 1}</td>
                   <td className="td whitespace-nowrap">
