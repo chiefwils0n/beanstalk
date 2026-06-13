@@ -66,6 +66,16 @@ export default async function AccountsPage() {
   ]);
   const options = flattenAccounts(accounts);
 
+  // Section accent per account type, matching the dashboard stat-card palette.
+  const titleText = "text-zinc-900 dark:text-zinc-100";
+  const typeTone: Record<AccountType, { bar: string; text: string }> = {
+    ASSET: { bar: "border-l-indigo-500 bg-indigo-50 dark:bg-indigo-950/40", text: titleText },
+    LIABILITY: { bar: "border-l-amber-500 bg-amber-50 dark:bg-amber-950/40", text: titleText },
+    EQUITY: { bar: "border-l-slate-500 bg-slate-100 dark:bg-slate-800/40", text: titleText },
+    INCOME: { bar: "border-l-emerald-500 bg-emerald-50 dark:bg-emerald-950/40", text: titleText },
+    EXPENSE: { bar: "border-l-rose-500 bg-rose-50 dark:bg-rose-950/40", text: titleText },
+  };
+
   return (
     <div className="flex flex-col gap-6">
       <h1 className="page-title">Chart of Accounts</h1>
@@ -78,9 +88,12 @@ export default async function AccountsPage() {
         );
         if (tree.length === 0) return null;
         const total = tree.reduce((s, n) => s + n.total, 0);
+        const tone = typeTone[type as AccountType];
         return (
           <div key={type} className="card">
-            <h2 className="mb-2 flex items-center justify-between font-semibold">
+            <h2
+              className={`mb-3 flex items-center justify-between rounded-lg border-l-4 px-3 py-2 text-base font-bold ${tone.bar} ${tone.text}`}
+            >
               {ACCOUNT_TYPE_LABELS[type as AccountType]}
               <span className="money text-sm">{formatMoney(total)}</span>
             </h2>
