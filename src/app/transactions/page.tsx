@@ -169,7 +169,7 @@ export default async function TransactionsPage({
                 <td className="td text-xs text-zinc-500">
                   {[...new Set(entry.lines.map((l) => l.account.name))].join(", ")}
                 </td>
-                <td className="td text-right font-mono">
+                <td className="td text-right money">
                   {formatMoney(entry.lines.reduce((s, l) => s + l.debit, 0))}
                 </td>
                 <td className="td text-center">

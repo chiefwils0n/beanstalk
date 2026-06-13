@@ -188,7 +188,7 @@ export function InvoiceForm({
                   onChange={(e) => setItem(i, { unitPrice: e.target.value })}
                 />
               </td>
-              <td className="td text-right font-mono text-sm">
+              <td className="td text-right money text-sm">
                 {formatMoney(Math.round(Number(item.quantity || 0) * cents(item.unitPrice)))}
               </td>
               <td className="td text-right">
@@ -213,7 +213,7 @@ export function InvoiceForm({
               </button>
             </td>
             <td className="td text-right text-sm font-semibold">Total</td>
-            <td className="td text-right font-mono text-sm font-semibold">{formatMoney(total)}</td>
+            <td className="td text-right money text-sm font-semibold">{formatMoney(total)}</td>
             <td className="td" />
           </tr>
         </tfoot>

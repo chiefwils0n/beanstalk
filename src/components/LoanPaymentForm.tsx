@@ -86,15 +86,15 @@ export function LoanPaymentForm({
         </button>
       </div>
       <p className="text-sm text-zinc-500 dark:text-zinc-400">
-        Will post: <span className="font-mono">{formatMoney(previewPrincipal)}</span> principal
+        Will post: <span className="money">{formatMoney(previewPrincipal)}</span> principal
         {previewInterest > 0 && (
           <>
             {" + "}
-            <span className="font-mono">{formatMoney(previewInterest)}</span> interest
+            <span className="money">{formatMoney(previewInterest)}</span> interest
           </>
         )}
         {" = "}
-        <span className="font-mono font-semibold">{formatMoney(previewTotal)}</span> from your
+        <span className="money font-semibold">{formatMoney(previewTotal)}</span> from your
         payment account.
       </p>
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}

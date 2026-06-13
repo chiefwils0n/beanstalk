@@ -69,7 +69,7 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
         {cards.map((card) => (
           <div key={card.label} className="card p-4">
             <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">{card.label}</p>
-            <p className="mt-1 font-mono text-sm font-semibold">{card.value}</p>
+            <p className="mt-1 money text-sm font-semibold">{card.value}</p>
           </div>
         ))}
       </div>
@@ -148,12 +148,12 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
                       formatDate(payment.date)
                     )}
                   </td>
-                  <td className="td text-right font-mono">{formatMoney(payment.principal)}</td>
-                  <td className="td text-right font-mono">{formatMoney(payment.interest)}</td>
-                  <td className="td text-right font-mono text-zinc-500">
+                  <td className="td text-right money">{formatMoney(payment.principal)}</td>
+                  <td className="td text-right money">{formatMoney(payment.interest)}</td>
+                  <td className="td text-right money text-zinc-500">
                     {payment.extra ? formatMoney(payment.extra) : ""}
                   </td>
-                  <td className="td text-right font-mono">{formatMoney(payment.principal + payment.interest)}</td>
+                  <td className="td text-right money">{formatMoney(payment.principal + payment.interest)}</td>
                   <td className="td text-right">
                     <form action={deleteLoanPayment}>
                       <input type="hidden" name="id" value={payment.id} />
@@ -187,10 +187,10 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
                   <tr key={row.n}>
                     <td className="td text-zinc-500">{row.n}</td>
                     <td className="td whitespace-nowrap">{formatDate(row.date)}</td>
-                    <td className="td text-right font-mono">{formatMoney(row.payment)}</td>
-                    <td className="td text-right font-mono">{formatMoney(row.principal)}</td>
-                    <td className="td text-right font-mono">{formatMoney(row.interest)}</td>
-                    <td className="td text-right font-mono">{formatMoney(row.balance)}</td>
+                    <td className="td text-right money">{formatMoney(row.payment)}</td>
+                    <td className="td text-right money">{formatMoney(row.principal)}</td>
+                    <td className="td text-right money">{formatMoney(row.interest)}</td>
+                    <td className="td text-right money">{formatMoney(row.balance)}</td>
                   </tr>
                 ))}
               </tbody>

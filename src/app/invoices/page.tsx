@@ -63,7 +63,7 @@ export default async function InvoicesPage() {
                     {formatDate(invoice.dueDate)}
                     {overdue && " (overdue)"}
                   </td>
-                  <td className="td text-right font-mono">{formatMoney(invoice.total)}</td>
+                  <td className="td text-right money">{formatMoney(invoice.total)}</td>
                   <td className="td text-center">
                     <span className={`badge ${STATUS_STYLES[invoice.status]}`}>{invoice.status.toLowerCase()}</span>
                   </td>

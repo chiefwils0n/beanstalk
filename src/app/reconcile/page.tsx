@@ -136,7 +136,7 @@ export default async function ReconcilePage({
                 <tr key={rec.id}>
                   <td className="td">{rec.account.name}</td>
                   <td className="td">{formatDate(rec.statementDate)}</td>
-                  <td className="td text-right font-mono">{formatMoney(rec.endingBalance)}</td>
+                  <td className="td text-right money">{formatMoney(rec.endingBalance)}</td>
                   <td className="td text-right">{rec._count.lines}</td>
                   <td className="td text-right">
                     <form action={undoReconciliation}>

@@ -13,7 +13,7 @@ function TaxGroupRows({ groups, year }: { groups: TaxGroup[]; year: number }) {
         <tbody key={group.taxLine}>
           <tr>
             <td className="td font-medium">{group.taxLine}</td>
-            <td className="td text-right font-mono font-medium">{formatMoney(group.total)}</td>
+            <td className="td text-right money font-medium">{formatMoney(group.total)}</td>
           </tr>
           {group.accounts.map(({ account, amount }) => (
             <tr key={account.id}>
@@ -26,7 +26,7 @@ function TaxGroupRows({ groups, year }: { groups: TaxGroup[]; year: number }) {
                   {account.name}
                 </Link>
               </td>
-              <td className="td text-right font-mono text-zinc-500">{formatMoney(amount)}</td>
+              <td className="td text-right money text-zinc-500">{formatMoney(amount)}</td>
             </tr>
           ))}
         </tbody>
@@ -92,7 +92,7 @@ export default async function TaxSummaryPage({
           <tbody>
             <tr className="bg-zinc-50 dark:bg-zinc-800/50">
               <td className="td font-bold">Total income</td>
-              <td className="td text-right font-mono font-bold">{formatMoney(report.totalIncome)}</td>
+              <td className="td text-right money font-bold">{formatMoney(report.totalIncome)}</td>
             </tr>
           </tbody>
         </table>
@@ -110,7 +110,7 @@ export default async function TaxSummaryPage({
           <tbody>
             <tr className="bg-zinc-50 dark:bg-zinc-800/50">
               <td className="td font-bold">Total expenses</td>
-              <td className="td text-right font-mono font-bold">{formatMoney(report.totalExpenses)}</td>
+              <td className="td text-right money font-bold">{formatMoney(report.totalExpenses)}</td>
             </tr>
           </tbody>
         </table>
@@ -118,7 +118,7 @@ export default async function TaxSummaryPage({
 
       <div className="card flex items-center justify-between">
         <span className="font-semibold">Net profit for {year}</span>
-        <span className={`font-mono text-lg font-bold ${report.netProfit < 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+        <span className={`money text-lg font-bold ${report.netProfit < 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>
           {formatMoney(report.netProfit)}
         </span>
       </div>

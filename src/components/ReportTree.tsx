@@ -62,7 +62,7 @@ function ReportTreeRow({
             {node.account.name}
           </Link>
         </td>
-        <td className="td text-right font-mono">{formatMoney(hasChildren ? node.own : node.total)}</td>
+        <td className="td text-right money">{formatMoney(hasChildren ? node.own : node.total)}</td>
       </tr>
       <ReportTreeRows nodes={node.children} depth={depth + 1} hideZero={hideZero} drill={drill} />
       {hasChildren && (
@@ -73,7 +73,7 @@ function ReportTreeRow({
           >
             Total {node.account.name}
           </td>
-          <td className="td text-right font-mono font-medium">{formatMoney(node.total)}</td>
+          <td className="td text-right money font-medium">{formatMoney(node.total)}</td>
         </tr>
       )}
     </>

@@ -76,7 +76,7 @@ export function ReconcileWorkspace({
     <div className="card flex flex-col gap-4">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
         <h2 className="font-semibold">{account.name} — statement through {statementDate}</h2>
-        <div className="flex gap-5 font-mono text-sm">
+        <div className="flex gap-5 money text-sm">
           <span>Beginning {formatMoney(beginning)}</span>
           <span>Cleared {formatMoney(clearedSum)}</span>
           <span>Statement {formatMoney(endingBalance)}</span>
@@ -129,7 +129,7 @@ export function ReconcileWorkspace({
                 </td>
                 <td className="td whitespace-nowrap text-zinc-500">{line.date}</td>
                 <td className="td">{line.memo}</td>
-                <td className={`td text-right font-mono ${line.amount < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
+                <td className={`td text-right money ${line.amount < 0 ? "text-red-600 dark:text-red-400" : ""}`}>
                   {formatMoney(line.amount)}
                 </td>
               </tr>

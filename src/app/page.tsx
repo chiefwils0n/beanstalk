@@ -67,7 +67,7 @@ export default async function Dashboard() {
         {cards.map((card) => (
           <div key={card.label} className="card">
             <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">{card.label}</p>
-            <p className="mt-1 font-mono text-lg font-semibold">{formatMoney(card.value)}</p>
+            <p className="mt-1 money text-lg font-semibold">{formatMoney(card.value)}</p>
           </div>
         ))}
       </div>
@@ -102,7 +102,7 @@ export default async function Dashboard() {
                         </span>
                       ))}
                     </td>
-                    <td className="td text-right font-mono">
+                    <td className="td text-right money">
                       {formatMoney(entry.lines.reduce((s, l) => s + l.debit, 0))}
                     </td>
                   </tr>
@@ -137,7 +137,7 @@ export default async function Dashboard() {
                       <td className={`td whitespace-nowrap ${overdue ? "text-red-600 dark:text-red-400" : "text-zinc-500"}`}>
                         due {formatDate(invoice.dueDate)}
                       </td>
-                      <td className="td text-right font-mono">{formatMoney(invoice.total)}</td>
+                      <td className="td text-right money">{formatMoney(invoice.total)}</td>
                     </tr>
                   );
                 })}

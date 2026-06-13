@@ -258,8 +258,8 @@ export function EntryForm({
                 + Add line
               </button>
             </td>
-            <td className="td text-right font-mono text-sm font-semibold">{formatMoney(totalDebit)}</td>
-            <td className="td text-right font-mono text-sm font-semibold">{formatMoney(totalCredit)}</td>
+            <td className="td text-right money text-sm font-semibold">{formatMoney(totalDebit)}</td>
+            <td className="td text-right money text-sm font-semibold">{formatMoney(totalCredit)}</td>
             <td className="td" />
           </tr>
         </tfoot>

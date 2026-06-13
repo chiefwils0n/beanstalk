@@ -179,8 +179,8 @@ export default async function GeneralLedgerPage({
                     )}
                   </td>
                 )}
-                <td className="td text-right font-mono">{line.debit ? formatMoney(line.debit) : ""}</td>
-                <td className="td text-right font-mono">{line.credit ? formatMoney(line.credit) : ""}</td>
+                <td className="td text-right money">{line.debit ? formatMoney(line.debit) : ""}</td>
+                <td className="td text-right money">{line.credit ? formatMoney(line.credit) : ""}</td>
               </tr>
             ))}
           </tbody>

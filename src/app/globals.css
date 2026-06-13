@@ -45,4 +45,10 @@ body {
   .badge {
     @apply inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium;
   }
+  /* Money: clean sans figures with tabular (fixed-width) digits so columns
+     still align without the typewriter look of a monospace font. */
+  .money {
+    font-variant-numeric: tabular-nums slashed-zero;
+    font-feature-settings: "tnum", "zero";
+  }
 }

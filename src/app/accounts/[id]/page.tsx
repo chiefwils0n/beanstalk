@@ -92,8 +92,8 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
                       {line.entry.memo}
                     </Link>
                   </td>
-                  <td className="td text-right font-mono">{line.debit ? formatMoney(line.debit) : ""}</td>
-                  <td className="td text-right font-mono">{line.credit ? formatMoney(line.credit) : ""}</td>
+                  <td className="td text-right money">{line.debit ? formatMoney(line.debit) : ""}</td>
+                  <td className="td text-right money">{line.credit ? formatMoney(line.credit) : ""}</td>
                 </tr>
               ))}
             </tbody>

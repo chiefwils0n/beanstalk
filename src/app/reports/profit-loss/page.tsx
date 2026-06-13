@@ -82,7 +82,7 @@ export default async function ProfitLossPage({
             <ReportTreeRows nodes={report.income} drill={drill} />
             <tr>
               <td className="td font-semibold">Total income</td>
-              <td className="td text-right font-mono font-semibold">{formatMoney(report.totalIncome)}</td>
+              <td className="td text-right money font-semibold">{formatMoney(report.totalIncome)}</td>
             </tr>
             <tr>
               <td className="td pt-4 font-semibold" colSpan={2}>
@@ -92,11 +92,11 @@ export default async function ProfitLossPage({
             <ReportTreeRows nodes={report.expenses} drill={drill} />
             <tr>
               <td className="td font-semibold">Total expenses</td>
-              <td className="td text-right font-mono font-semibold">{formatMoney(report.totalExpenses)}</td>
+              <td className="td text-right money font-semibold">{formatMoney(report.totalExpenses)}</td>
             </tr>
             <tr className="bg-zinc-50 dark:bg-zinc-800/50">
               <td className="td text-base font-bold">Net income</td>
-              <td className={`td text-right font-mono text-base font-bold ${report.netIncome < 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+              <td className={`td text-right money text-base font-bold ${report.netIncome < 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>
                 {formatMoney(report.netIncome)}
               </td>
             </tr>

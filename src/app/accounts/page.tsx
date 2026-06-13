@@ -32,7 +32,7 @@ function AccountRow({ node, depth }: { node: AccountNode; depth: number }) {
           </span>
         </td>
         <td className="td text-xs text-zinc-500">{account.taxLine ?? ""}</td>
-        <td className="td text-right font-mono">
+        <td className="td text-right money">
           {node.children.length > 0 ? (
             <span title={`Direct: ${formatMoney(node.own)}`}>{formatMoney(node.total)}</span>
           ) : (
@@ -82,7 +82,7 @@ export default async function AccountsPage() {
           <div key={type} className="card">
             <h2 className="mb-2 flex items-center justify-between font-semibold">
               {ACCOUNT_TYPE_LABELS[type as AccountType]}
-              <span className="font-mono text-sm">{formatMoney(total)}</span>
+              <span className="money text-sm">{formatMoney(total)}</span>
             </h2>
             <table className="w-full">
               <thead>

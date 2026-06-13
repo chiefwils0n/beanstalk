@@ -102,8 +102,8 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
                 <td className="td">{item.description}</td>
                 <td className="td text-zinc-500">{item.account.name}</td>
                 <td className="td text-right">{item.quantity}</td>
-                <td className="td text-right font-mono">{formatMoney(item.unitPrice)}</td>
-                <td className="td text-right font-mono">{formatMoney(item.amount)}</td>
+                <td className="td text-right money">{formatMoney(item.unitPrice)}</td>
+                <td className="td text-right money">{formatMoney(item.amount)}</td>
               </tr>
             ))}
           </tbody>
@@ -112,19 +112,19 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
               <td className="td font-semibold" colSpan={4}>
                 Total
               </td>
-              <td className="td text-right font-mono font-semibold">{formatMoney(invoice.total)}</td>
+              <td className="td text-right money font-semibold">{formatMoney(invoice.total)}</td>
             </tr>
             <tr>
               <td className="td" colSpan={4}>
                 Paid
               </td>
-              <td className="td text-right font-mono">{formatMoney(paid)}</td>
+              <td className="td text-right money">{formatMoney(paid)}</td>
             </tr>
             <tr>
               <td className="td font-semibold" colSpan={4}>
                 Balance due
               </td>
-              <td className="td text-right font-mono font-semibold">{formatMoney(balanceDue)}</td>
+              <td className="td text-right money font-semibold">{formatMoney(balanceDue)}</td>
             </tr>
           </tfoot>
         </table>
@@ -158,7 +158,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
                       {entry.memo}
                     </Link>
                   </td>
-                  <td className="td text-right font-mono">
+                  <td className="td text-right money">
                     {formatMoney(entry.lines.reduce((s, l) => s + l.debit, 0))}
                   </td>
                 </tr>

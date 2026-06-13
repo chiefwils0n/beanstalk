@@ -68,16 +68,16 @@ export default async function TrialBalancePage({
                     {row.account.name}
                   </Link>
                 </td>
-                <td className="td text-right font-mono">{row.debit ? formatMoney(row.debit) : ""}</td>
-                <td className="td text-right font-mono">{row.credit ? formatMoney(row.credit) : ""}</td>
+                <td className="td text-right money">{row.debit ? formatMoney(row.debit) : ""}</td>
+                <td className="td text-right money">{row.credit ? formatMoney(row.credit) : ""}</td>
               </tr>
             ))}
           </tbody>
           <tfoot>
             <tr className="bg-zinc-50 dark:bg-zinc-800/50">
               <td className="td font-bold">Totals</td>
-              <td className="td text-right font-mono font-bold">{formatMoney(report.totalDebit)}</td>
-              <td className="td text-right font-mono font-bold">{formatMoney(report.totalCredit)}</td>
+              <td className="td text-right money font-bold">{formatMoney(report.totalDebit)}</td>
+              <td className="td text-right money font-bold">{formatMoney(report.totalCredit)}</td>
             </tr>
           </tfoot>
         </table>

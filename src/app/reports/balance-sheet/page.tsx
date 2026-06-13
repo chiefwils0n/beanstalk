@@ -51,7 +51,7 @@ export default async function BalanceSheetPage({
             <ReportTreeRows nodes={report.assets} drill={{ to: toDateInput(asOf) }} />
             <tr>
               <td className="td font-semibold">Total assets</td>
-              <td className="td text-right font-mono font-semibold">{formatMoney(report.totalAssets)}</td>
+              <td className="td text-right money font-semibold">{formatMoney(report.totalAssets)}</td>
             </tr>
             <tr>
               <td className="td pt-4 font-semibold" colSpan={2}>
@@ -61,7 +61,7 @@ export default async function BalanceSheetPage({
             <ReportTreeRows nodes={report.liabilities} drill={{ to: toDateInput(asOf) }} />
             <tr>
               <td className="td font-semibold">Total liabilities</td>
-              <td className="td text-right font-mono font-semibold">{formatMoney(report.totalLiabilities)}</td>
+              <td className="td text-right money font-semibold">{formatMoney(report.totalLiabilities)}</td>
             </tr>
             <tr>
               <td className="td pt-4 font-semibold" colSpan={2}>
@@ -78,15 +78,15 @@ export default async function BalanceSheetPage({
                   Net income (earnings to date)
                 </Link>
               </td>
-              <td className="td text-right font-mono">{formatMoney(report.netIncome)}</td>
+              <td className="td text-right money">{formatMoney(report.netIncome)}</td>
             </tr>
             <tr>
               <td className="td font-semibold">Total equity</td>
-              <td className="td text-right font-mono font-semibold">{formatMoney(report.totalEquity)}</td>
+              <td className="td text-right money font-semibold">{formatMoney(report.totalEquity)}</td>
             </tr>
             <tr className="bg-zinc-50 dark:bg-zinc-800/50">
               <td className="td font-bold">Liabilities + equity</td>
-              <td className="td text-right font-mono font-bold">
+              <td className="td text-right money font-bold">
                 {formatMoney(report.totalLiabilities + report.totalEquity)}
               </td>
             </tr>

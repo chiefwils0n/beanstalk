@@ -89,7 +89,7 @@ export function LoanWhatIf({
               </li>
               <li>
                 Interest saved:{" "}
-                <span className="font-mono font-medium text-emerald-700 dark:text-emerald-400">
+                <span className="money font-medium text-emerald-700 dark:text-emerald-400">
                   {formatMoney(Math.max(keep.interestSaved, 0))}
                 </span>
               </li>
@@ -104,7 +104,7 @@ export function LoanWhatIf({
             <ul className="mt-2 space-y-1 text-zinc-600 dark:text-zinc-300">
               <li>
                 New monthly payment:{" "}
-                <span className="font-mono font-medium">{formatMoney(recast.payment)}</span>{" "}
+                <span className="money font-medium">{formatMoney(recast.payment)}</span>{" "}
                 <span className="text-zinc-400">
                   (was {formatMoney(payment)}, −{formatMoney(Math.max(payment - recast.payment, 0))}/mo)
                 </span>

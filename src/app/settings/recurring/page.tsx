@@ -87,7 +87,7 @@ export default async function RecurringPage() {
                     {formatDate(r.nextRun)}
                     {due && " (due)"}
                   </td>
-                  <td className="td text-right font-mono">{formatMoney(amount)}</td>
+                  <td className="td text-right money">{formatMoney(amount)}</td>
                   <td className="td text-right">{r._count.entries}</td>
                   <td className="td">
                     <div className="flex justify-end gap-1">
