@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { prisma } from "./db";
-import { BUSINESS_COOKIE, requireBusiness } from "./business";
+import { BUSINESS_COOKIE, TXN_FILTER_COOKIE, requireBusiness } from "./business";
 import { seedChartOfAccounts } from "./coa";
 import { parseDate, parseMoney } from "./money";
 import { postOccurrence, runDueRecurring, advanceDate } from "./recurring";
@@ -13,6 +13,30 @@ import { checkBalanced } from "./ledger";
 
 function str(formData: FormData, key: string): string {
   return String(formData.get(key) ?? "").trim();
+}
+
+// ------------------------------------------------------ transactions filter
+
+const TXN_FILTER_FIELDS = ["from", "to", "account", "class", "contact", "tag", "amount", "q"];
+
+/** Apply (and remember) the Transactions filter; persists until cleared. */
+export async function applyTransactionFilter(formData: FormData) {
+  const params = new URLSearchParams();
+  for (const key of TXN_FILTER_FIELDS) {
+    const value = str(formData, key);
+    if (value) params.set(key, value);
+  }
+  const qs = params.toString();
+  const jar = await cookies();
+  if (qs) jar.set(TXN_FILTER_COOKIE, qs, { path: "/", maxAge: 60 * 60 * 24 * 365 });
+  else jar.delete(TXN_FILTER_COOKIE);
+  redirect(qs ? `/transactions?${qs}` : "/transactions");
+}
+
+/** Forget the saved Transactions filter and show everything. */
+export async function clearTransactionFilter() {
+  (await cookies()).delete(TXN_FILTER_COOKIE);
+  redirect("/transactions");
 }
 
 // ---------------------------------------------------------------- businesses

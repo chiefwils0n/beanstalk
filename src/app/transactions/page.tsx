@@ -1,6 +1,9 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { prisma } from "../../lib/db";
-import { requireBusiness } from "../../lib/business";
+import { requireBusiness, TXN_FILTER_COOKIE } from "../../lib/business";
+import { applyTransactionFilter, clearTransactionFilter } from "../../lib/actions";
 import { flattenAccounts } from "../../lib/accounting";
 import { flattenContacts, contactWithDescendants } from "../../lib/contacts";
 import { formatMoney, formatDate, parseDate, parseMoney } from "../../lib/money";
@@ -20,7 +23,16 @@ export default async function TransactionsPage({
   }>;
 }) {
   const business = await requireBusiness();
-  const { from, to, tag, q, account, class: classFilter, contact, amount } = await searchParams;
+  const sp = await searchParams;
+  const { from, to, tag, q, account, class: classFilter, contact, amount } = sp;
+
+  // Filter persists across visits: arriving with no params restores the last
+  // saved filter (cleared via the Clear button, which deletes the cookie).
+  const hasParams = Object.values(sp).some(Boolean);
+  if (!hasParams) {
+    const saved = (await cookies()).get(TXN_FILTER_COOKIE)?.value;
+    if (saved) redirect(`/transactions?${saved}`);
+  }
 
   let amountCents: number | null = null;
   try {
@@ -79,7 +91,7 @@ export default async function TransactionsPage({
         </Link>
       </div>
 
-      <form className="card flex flex-wrap items-end gap-3" method="GET">
+      <form className="card flex flex-wrap items-end gap-3" action={applyTransactionFilter}>
         <div>
           <label className="label">From</label>
           <input type="date" name="from" defaultValue={from} className="input" />
@@ -153,9 +165,9 @@ export default async function TransactionsPage({
           <input name="q" defaultValue={q} className="input" placeholder="Search…" />
         </div>
         <button className="btn">Filter</button>
-        <Link href="/transactions" className="btn">
+        <button formAction={clearTransactionFilter} className="btn">
           Clear
-        </Link>
+        </button>
       </form>
 
       <div className="card overflow-x-auto p-0">

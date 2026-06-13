@@ -5,6 +5,9 @@ import { prisma } from "./db";
 
 export const BUSINESS_COOKIE = "beanstalk_business";
 
+/** Persists the active Transactions-page filter query string until cleared. */
+export const TXN_FILTER_COOKIE = "beanstalk_txn_filter";
+
 export async function getActiveBusiness() {
   const id = (await cookies()).get(BUSINESS_COOKIE)?.value;
   if (id) {
