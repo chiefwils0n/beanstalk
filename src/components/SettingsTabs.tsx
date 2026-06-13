@@ -9,6 +9,7 @@ const TABS: [string, string][] = [
   ["Tags", "/settings/tags"],
   ["Classes", "/settings/classes"],
   ["Contact types", "/settings/contact-types"],
+  ["Backup", "/settings/backup"],
 ];
 
 export function SettingsTabs() {
