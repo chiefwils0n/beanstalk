@@ -33,11 +33,17 @@ function AccountRow({ node, depth }: { node: AccountNode; depth: number }) {
         </td>
         <td className="td text-xs text-zinc-500">{account.taxLine ?? ""}</td>
         <td className="td text-right money">
-          {node.children.length > 0 ? (
-            <span title={`Direct: ${formatMoney(node.own)}`}>{formatMoney(node.total)}</span>
-          ) : (
-            formatMoney(node.total)
-          )}
+          <Link
+            href={`/transactions?account=${account.id}`}
+            className="hover:text-emerald-600 hover:underline dark:hover:text-emerald-400"
+            title="View transactions for this account"
+          >
+            {node.children.length > 0 ? (
+              <span title={`Direct: ${formatMoney(node.own)}`}>{formatMoney(node.total)}</span>
+            ) : (
+              formatMoney(node.total)
+            )}
+          </Link>
         </td>
         <td className="td text-right whitespace-nowrap">
           <div className="flex justify-end gap-1">
