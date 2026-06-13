@@ -17,7 +17,7 @@
     "db:studio": "prisma studio",
     "db:studio:sandbox": "DATABASE_URL=file:./sandbox.db prisma studio",
     "sandbox:refresh": "cp prisma/beanstalk.db prisma/sandbox.db && echo 'sandbox.db refreshed from beanstalk.db'",
-    "seed": "DATABASE_URL=file:./sandbox.db tsx prisma/seed.ts"
+    "seed": "DATABASE_URL=file:./sandbox.db prisma migrate deploy && DATABASE_URL=file:./sandbox.db tsx prisma/seed.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

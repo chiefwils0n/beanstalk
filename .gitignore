@@ -35,9 +35,15 @@ yarn-error.log*
 .env*
 !.env.example
 
-# local databases (production + dev sandbox)
+# local databases (production + dev sandbox) and SQLite sidecars
 prisma/*.db
 prisma/*.db-journal
+prisma/*.db-wal
+prisma/*.db-shm
+/ci.db
+
+# file-sync metadata (Resilio/etc.) — must never land in the public repo
+prisma/.sync/
 
 # vercel
 .vercel

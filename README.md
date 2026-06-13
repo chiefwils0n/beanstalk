@@ -31,18 +31,33 @@ next-themes · googleapis
 
 ## Getting started
 
+Run your real books (production):
+
 ```bash
 npm install
-npm install
-npx prisma migrate deploy   # creates prisma/beanstalk.db (your real books)
-npm run sandbox:refresh     # clone it to prisma/sandbox.db for development
-npm run start:prod          # build + serve at http://localhost:3000
+cp .env.example .env         # required: provides DATABASE_URL (edit for Google Drive, etc.)
+npx prisma migrate deploy    # creates prisma/beanstalk.db from the migrations
+npm run start:prod           # build + serve at http://localhost:3000
 ```
 
 Create your first business on the Businesses page — the chart of accounts is seeded
 automatically.
 
-All amounts are stored as integer cents; dates are stored as UTC dates.
+### Contributing / development
+
+The dev server runs against a throwaway `sandbox.db`, so it never touches your real
+books:
+
+```bash
+npm install
+cp .env.example .env         # DATABASE_URL is needed even though dev overrides it
+npm run seed                 # creates sandbox.db from migrations + a demo business
+npm run dev                  # hot-reloading dev server at http://localhost:3001
+```
+
+Before opening a PR: `npm run lint`, `npm run typecheck`, and `npm test` should all pass.
+See [CONTRIBUTING.md](CONTRIBUTING.md). All amounts are stored as integer cents; dates
+are stored as UTC dates.
 
 ## Running Beanstalk: production vs. development
 
