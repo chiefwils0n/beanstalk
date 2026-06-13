@@ -1,17 +1,43 @@
 import Link from "next/link";
 import { prisma } from "../../lib/db";
 import { requireBusiness } from "../../lib/business";
-import { formatMoney, formatDate, parseDate } from "../../lib/money";
+import { flattenAccounts } from "../../lib/accounting";
+import { formatMoney, formatDate, parseDate, parseMoney } from "../../lib/money";
 
 export default async function TransactionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string; tag?: string; q?: string }>;
+  searchParams: Promise<{
+    from?: string;
+    to?: string;
+    tag?: string;
+    q?: string;
+    account?: string;
+    class?: string;
+    amount?: string;
+  }>;
 }) {
   const business = await requireBusiness();
-  const { from, to, tag, q } = await searchParams;
+  const { from, to, tag, q, account, class: classFilter, amount } = await searchParams;
 
-  const [entries, tags] = await Promise.all([
+  let amountCents: number | null = null;
+  try {
+    amountCents = amount ? parseMoney(amount) : null;
+  } catch {
+    amountCents = null;
+  }
+
+  // Line-level filters are independent: an entry matches if it has a line on
+  // the account AND a line with the class AND a line equal to the amount.
+  const lineConditions = [
+    account ? { lines: { some: { accountId: account } } } : null,
+    classFilter ? { lines: { some: { classId: classFilter } } } : null,
+    amountCents !== null
+      ? { lines: { some: { OR: [{ debit: amountCents }, { credit: amountCents }] } } }
+      : null,
+  ].filter((c): c is NonNullable<typeof c> => c !== null);
+
+  const [entries, tags, accounts, classes] = await Promise.all([
     prisma.journalEntry.findMany({
       where: {
         businessId: business.id,
@@ -21,12 +47,15 @@ export default async function TransactionsPage({
         },
         tags: tag ? { some: { tagId: tag } } : undefined,
         memo: q ? { contains: q } : undefined,
+        AND: lineConditions,
       },
       orderBy: [{ date: "desc" }, { createdAt: "desc" }],
       take: 200,
       include: { lines: { include: { account: true } }, tags: { include: { tag: true } } },
     }),
     prisma.tag.findMany({ where: { businessId: business.id }, orderBy: { name: "asc" } }),
+    prisma.account.findMany({ where: { businessId: business.id } }),
+    prisma.class.findMany({ where: { businessId: business.id }, orderBy: { name: "asc" } }),
   ]);
 
   return (
@@ -48,6 +77,30 @@ export default async function TransactionsPage({
           <input type="date" name="to" defaultValue={to} className="input" />
         </div>
         <div>
+          <label className="label">Account</label>
+          <select name="account" defaultValue={account ?? ""} className="input max-w-64">
+            <option value="">All accounts</option>
+            {flattenAccounts(accounts).map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        {classes.length > 0 && (
+          <div>
+            <label className="label">Class</label>
+            <select name="class" defaultValue={classFilter ?? ""} className="input">
+              <option value="">All classes</option>
+              {classes.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        <div>
           <label className="label">Tag</label>
           <select name="tag" defaultValue={tag ?? ""} className="input">
             <option value="">All tags</option>
@@ -57,6 +110,16 @@ export default async function TransactionsPage({
               </option>
             ))}
           </select>
+        </div>
+        <div>
+          <label className="label">Amount</label>
+          <input
+            name="amount"
+            defaultValue={amount}
+            className="input w-28 text-right"
+            inputMode="decimal"
+            placeholder="e.g. 542.44"
+          />
         </div>
         <div>
           <label className="label">Search memo</label>
