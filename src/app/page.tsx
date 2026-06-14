@@ -76,13 +76,13 @@ export default async function Dashboard() {
         </form>
       )}
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 2xl:grid-cols-5">
         {cards.map((card) => {
           const t = toneStyles[card.tone];
           return (
             <div
               key={card.label}
-              className={`flex items-center gap-2 rounded-xl border-l-4 p-4 shadow-sm ${t.wrap}`}
+              className={`flex items-center gap-4 rounded-xl border-l-4 p-4 shadow-sm ${t.wrap}`}
             >
               <Image
                 src={`/icons/${card.icon}.png`}
@@ -92,10 +92,10 @@ export default async function Dashboard() {
                 className="shrink-0"
               />
               <div className="min-w-0">
-                <p className={`text-[11px] font-semibold uppercase tracking-wide ${t.label}`}>
+                <p className={`text-xs font-semibold uppercase tracking-wide ${t.label}`}>
                   {card.label}
                 </p>
-                <p className={`mt-0.5 money whitespace-nowrap text-lg font-bold tracking-tight ${t.value}`}>
+                <p className={`mt-0.5 money whitespace-nowrap text-2xl font-bold tracking-tight ${t.value}`}>
                   {formatMoney(card.value)}
                 </p>
               </div>
