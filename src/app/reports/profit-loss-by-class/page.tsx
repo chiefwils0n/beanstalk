@@ -99,7 +99,13 @@ function MatrixRows({
                 <tr>
                   <td className="td whitespace-nowrap text-sm font-medium text-zinc-500">
                     <span style={{ paddingLeft: `${depth * 1.25}rem` }}>
-                      Total {node.account.name}
+                      <Link
+                        href={ledgerHref(node.account.id, drill, true)}
+                        className="hover:text-emerald-600 hover:underline dark:hover:text-emerald-400"
+                        title="Includes sub-accounts"
+                      >
+                        Total {node.account.name}
+                      </Link>
                     </span>
                   </td>
                   {columns.map((col) => (

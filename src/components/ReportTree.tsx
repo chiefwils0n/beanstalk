@@ -4,12 +4,14 @@ import type { AccountNode } from "../lib/accounting";
 
 export type DrillRange = { from?: string; to?: string; classId?: string };
 
-/** Link into the General Ledger filtered to one account over the report's range. */
-export function ledgerHref(accountId: string, drill?: DrillRange): string {
+/** Link into the General Ledger filtered to one account over the report's range.
+ *  Pass `includeSub` to include the account's sub-accounts (descendants). */
+export function ledgerHref(accountId: string, drill?: DrillRange, includeSub = false): string {
   const params = new URLSearchParams({ account: accountId });
   if (drill?.from) params.set("from", drill.from);
   if (drill?.to) params.set("to", drill.to);
   if (drill?.classId) params.set("class", drill.classId);
+  if (includeSub) params.set("subaccounts", "1");
   return `/reports/general-ledger?${params.toString()}`;
 }
 
@@ -71,7 +73,13 @@ function ReportTreeRow({
             className="td text-sm font-medium text-zinc-500"
             style={{ paddingLeft: `${0.75 + depth * 1.25}rem` }}
           >
-            Total {node.account.name}
+            <Link
+              href={ledgerHref(node.account.id, drill, true)}
+              className="hover:text-emerald-600 hover:underline dark:hover:text-emerald-400"
+              title="Includes sub-accounts"
+            >
+              Total {node.account.name}
+            </Link>
           </td>
           <td className="td text-right money font-medium">{formatMoney(node.total)}</td>
         </tr>

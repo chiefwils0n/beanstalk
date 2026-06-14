@@ -34,9 +34,15 @@ function AccountRow({ node, depth }: { node: AccountNode; depth: number }) {
         <td className="td text-xs text-zinc-500">{account.taxLine ?? ""}</td>
         <td className="td text-right money">
           <Link
-            href={`/transactions?account=${account.id}`}
+            // Parent balances are rolled up, so drill into the account + its
+            // sub-accounts to match the figure shown.
+            href={`/transactions?account=${account.id}${node.children.length > 0 ? "&subaccounts=1" : ""}`}
             className="hover:text-emerald-600 hover:underline dark:hover:text-emerald-400"
-            title="View transactions for this account"
+            title={
+              node.children.length > 0
+                ? "View transactions for this account and its sub-accounts"
+                : "View transactions for this account"
+            }
           >
             {node.children.length > 0 ? (
               <span title={`Direct: ${formatMoney(node.own)}`}>{formatMoney(node.total)}</span>

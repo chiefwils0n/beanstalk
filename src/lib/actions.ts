@@ -41,7 +41,7 @@ export async function logoutAction() {
 
 // ------------------------------------------------------ transactions filter
 
-const TXN_FILTER_FIELDS = ["period", "n", "from", "to", "account", "class", "contact", "tag", "amount", "q"];
+const TXN_FILTER_FIELDS = ["period", "n", "from", "to", "account", "subaccounts", "class", "contact", "tag", "amount", "q"];
 
 /** Apply (and remember) the Transactions filter; persists until cleared. */
 export async function applyTransactionFilter(formData: FormData) {

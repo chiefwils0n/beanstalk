@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { prisma } from "../../../lib/db";
 import { requireBusiness } from "../../../lib/business";
-import { flattenAccounts } from "../../../lib/accounting";
+import { flattenAccounts, accountWithDescendants } from "../../../lib/accounting";
 import { formatMoney, formatDate, parseDate, toDateInput, todayUTC } from "../../../lib/money";
 import { resolvePeriod } from "../../../lib/periods";
 import { contactWithDescendants } from "../../../lib/contacts";
@@ -10,7 +10,7 @@ import { ReportPeriodFields } from "../../../components/ReportPeriodFields";
 export default async function GeneralLedgerPage({
   searchParams,
 }: {
-  searchParams: Promise<{ from?: string; to?: string; account?: string; class?: string; contact?: string; period?: string; n?: string }>;
+  searchParams: Promise<{ from?: string; to?: string; account?: string; class?: string; contact?: string; period?: string; n?: string; subaccounts?: string }>;
 }) {
   const business = await requireBusiness();
   const sp = await searchParams;
@@ -32,7 +32,12 @@ export default async function GeneralLedgerPage({
     }),
     prisma.journalLine.findMany({
       where: {
-        accountId: sp.account || undefined,
+        // With "include sub-accounts", match the account and all its descendants.
+        accountId: sp.account
+          ? sp.subaccounts
+            ? { in: await accountWithDescendants(business.id, sp.account) }
+            : sp.account
+          : undefined,
         // `class=none` filters to lines with no class; otherwise filter by id.
         classId: sp.class === "none" ? null : sp.class || undefined,
         // Filtering by a parent contact (e.g. a household) includes its nested contacts.
@@ -61,7 +66,7 @@ export default async function GeneralLedgerPage({
         </div>
         <a
           className="btn btn-sm"
-          href={`/api/export?report=general-ledger${from ? `&from=${toDateInput(from)}` : ""}&to=${toDateInput(to)}${sp.account ? `&account=${sp.account}` : ""}${sp.class ? `&class=${sp.class}` : ""}${sp.contact ? `&contact=${sp.contact}` : ""}`}
+          href={`/api/export?report=general-ledger${from ? `&from=${toDateInput(from)}` : ""}&to=${toDateInput(to)}${sp.account ? `&account=${sp.account}` : ""}${sp.subaccounts ? `&subaccounts=1` : ""}${sp.class ? `&class=${sp.class}` : ""}${sp.contact ? `&contact=${sp.contact}` : ""}`}
         >
           Export CSV
         </a>
@@ -78,6 +83,13 @@ export default async function GeneralLedgerPage({
               </option>
             ))}
           </select>
+        </div>
+        <div>
+          <label className="label">&nbsp;</label>
+          <label className="flex h-9 items-center gap-2 text-sm whitespace-nowrap">
+            <input type="checkbox" name="subaccounts" value="1" defaultChecked={!!sp.subaccounts} />
+            Include sub-accounts
+          </label>
         </div>
         {hasContacts && (
           <div>

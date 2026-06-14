@@ -116,6 +116,35 @@ export async function getAccountsByType(businessId: string, type: string) {
   });
 }
 
+/**
+ * An account id plus all of its descendant account ids — for "include
+ * sub-accounts" filters, so drilling a parent matches its rolled-up balance.
+ */
+export async function accountWithDescendants(
+  businessId: string,
+  accountId: string
+): Promise<string[]> {
+  const accounts = await prisma.account.findMany({
+    where: { businessId },
+    select: { id: true, parentId: true },
+  });
+  const childrenByParent = new Map<string, string[]>();
+  for (const a of accounts) {
+    if (!a.parentId) continue;
+    const arr = childrenByParent.get(a.parentId) ?? [];
+    arr.push(a.id);
+    childrenByParent.set(a.parentId, arr);
+  }
+  const out: string[] = [];
+  const stack = [accountId];
+  while (stack.length) {
+    const id = stack.pop()!;
+    out.push(id);
+    for (const child of childrenByParent.get(id) ?? []) stack.push(child);
+  }
+  return out;
+}
+
 export async function profitAndLoss(
   businessId: string,
   from: Date | undefined,

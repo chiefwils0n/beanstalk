@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { prisma } from "../../lib/db";
 import { requireBusiness, TXN_FILTER_COOKIE } from "../../lib/business";
 import { applyTransactionFilter, clearTransactionFilter } from "../../lib/actions";
-import { flattenAccounts } from "../../lib/accounting";
+import { flattenAccounts, accountWithDescendants } from "../../lib/accounting";
 import { flattenContacts, contactWithDescendants } from "../../lib/contacts";
 import { formatMoney, formatDate, parseDate, parseMoney, toDateInput, todayUTC } from "../../lib/money";
 import { resolvePeriod } from "../../lib/periods";
@@ -26,6 +26,7 @@ export default async function TransactionsPage({
     n?: string;
     sort?: string;
     dir?: string;
+    subaccounts?: string;
   }>;
 }) {
   const business = await requireBusiness();
@@ -74,12 +75,19 @@ export default async function TransactionsPage({
 
   // Filtering by a contact includes its nested contacts (e.g. a household's tenants).
   const contactIds = contact ? await contactWithDescendants(business.id, contact) : null;
+  // "Include sub-accounts" expands the account filter to the account + descendants.
+  const accountIds = account
+    ? sp.subaccounts
+      ? await accountWithDescendants(business.id, account)
+      : [account]
+    : null;
+  const accountIdSet = accountIds ? new Set(accountIds) : null;
 
   // Line-level filters are independent: an entry matches if it has a line on
   // the account AND a line with the class AND a line for the name AND a line
   // equal to the amount.
   const lineConditions = [
-    account ? { lines: { some: { accountId: account } } } : null,
+    accountIds ? { lines: { some: { accountId: { in: accountIds } } } } : null,
     classFilter ? { lines: { some: { classId: classFilter } } } : null,
     contactIds ? { lines: { some: { contactId: { in: contactIds } } } } : null,
     amountCents !== null
@@ -124,7 +132,7 @@ export default async function TransactionsPage({
     let status: "void" | "R" | "C" | "" = "";
     if (entry.status === "VOID") status = "void";
     else {
-      const relevant = account ? entry.lines.filter((l) => l.accountId === account) : entry.lines;
+      const relevant = accountIdSet ? entry.lines.filter((l) => accountIdSet.has(l.accountId)) : entry.lines;
       if (relevant.some((l) => l.cleared === "RECONCILED")) status = "R";
       else if (relevant.some((l) => l.cleared === "CLEARED")) status = "C";
     }
@@ -166,6 +174,13 @@ export default async function TransactionsPage({
               </option>
             ))}
           </select>
+        </div>
+        <div>
+          <label className="label">&nbsp;</label>
+          <label className="flex h-9 items-center gap-2 text-sm whitespace-nowrap">
+            <input type="checkbox" name="subaccounts" value="1" defaultChecked={!!sp.subaccounts} />
+            Include sub-accounts
+          </label>
         </div>
         {classes.length > 0 && (
           <div>
