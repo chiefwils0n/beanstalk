@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { formatMoney } from "../lib/money";
+import type { AuditChange } from "../lib/audit";
 
 type AuditEventRow = {
   id: string;
@@ -8,6 +9,7 @@ type AuditEventRow = {
   amount: number;
   entryId: string | null;
   createdAt: Date;
+  changes?: AuditChange[];
 };
 
 const ACTION_STYLE: Record<string, string> = {
@@ -50,8 +52,26 @@ export function AuditList({
               ) : (
                 e.memo
               )}
+              {e.changes && (
+                <ul className="mt-1 space-y-0.5 text-xs text-zinc-500 dark:text-zinc-400">
+                  {e.changes.length === 0 && <li>no field changes</li>}
+                  {e.changes.map((c, i) => (
+                    <li key={i}>
+                      {c.kind === "field" ? (
+                        <>
+                          {c.label}: <span className="line-through">{c.from}</span> → {c.to}
+                        </>
+                      ) : c.kind === "line-added" ? (
+                        <span className="text-emerald-600 dark:text-emerald-400">+ {c.text}</span>
+                      ) : (
+                        <span className="text-rose-600 dark:text-rose-400">− {c.text}</span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </td>
-            <td className="td text-right money">{formatMoney(e.amount)}</td>
+            <td className="td text-right money align-top">{formatMoney(e.amount)}</td>
           </tr>
         ))}
       </tbody>

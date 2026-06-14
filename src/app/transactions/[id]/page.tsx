@@ -8,6 +8,7 @@ import { formatDate, toDateInput, todayUTC } from "../../../lib/money";
 import { EntryForm } from "../../../components/EntryForm";
 import { ConfirmButton } from "../../../components/ConfirmButton";
 import { AuditList } from "../../../components/AuditList";
+import { withDiffs } from "../../../lib/audit";
 
 export default async function TransactionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -110,7 +111,7 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
 
       <div className="card">
         <h2 className="mb-2 font-semibold">History</h2>
-        <AuditList events={auditEvents} />
+        <AuditList events={withDiffs(auditEvents)} />
       </div>
     </div>
   );
