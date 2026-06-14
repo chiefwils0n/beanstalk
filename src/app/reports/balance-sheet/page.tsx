@@ -4,6 +4,7 @@ import { balanceSheet } from "../../../lib/accounting";
 import { formatMoney, parseDate, toDateInput, todayUTC, formatDate } from "../../../lib/money";
 import { ReportTreeRows } from "../../../components/ReportTree";
 import { ReportSectionHeader } from "../../../components/ReportSection";
+import { AsOfField } from "../../../components/AsOfField";
 
 export default async function BalanceSheetPage({
   searchParams,
@@ -34,10 +35,11 @@ export default async function BalanceSheetPage({
       </div>
 
       <form className="card flex flex-wrap items-end gap-3" method="GET">
-        <div>
-          <label className="label">As of</label>
-          <input type="date" name="asOf" defaultValue={toDateInput(asOf)} className="input" />
-        </div>
+        <AsOfField
+          today={toDateInput(todayUTC())}
+          fiscalStartMonth={business.fiscalYearStart}
+          defaultAsOf={toDateInput(asOf)}
+        />
         <button className="btn">Run report</button>
       </form>
 

@@ -195,6 +195,12 @@ export default async function ProfitLossByClassPage({
           <h1 className="page-title mt-1">Profit &amp; Loss by Class</h1>
           <p className="text-sm text-zinc-500">{business.name}</p>
         </div>
+        <a
+          className="btn btn-sm"
+          href={`/api/export?report=profit-loss-by-class${from ? `&from=${toDateInput(from)}` : ""}&to=${toDateInput(to)}`}
+        >
+          Export CSV
+        </a>
       </div>
 
       <form className="card flex flex-wrap items-end gap-3" method="GET">

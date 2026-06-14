@@ -3,10 +3,13 @@ import { prisma } from "../../../lib/db";
 import { getActiveBusiness } from "../../../lib/business";
 import {
   profitAndLoss,
+  profitAndLossByClass,
   balanceSheet,
   trialBalance,
   taxSummary,
   type AccountNode,
+  type ClassColumn,
+  type ClassMatrixNode,
 } from "../../../lib/accounting";
 import { parseDate, toDateInput, todayUTC } from "../../../lib/money";
 import { contactWithDescendants } from "../../../lib/contacts";
@@ -63,6 +66,45 @@ export async function GET(request: NextRequest) {
         ...treeRows(data.expenses),
         ["Total expenses", data.totalExpenses],
         ["Net income", data.netIncome],
+      ];
+      break;
+    }
+    case "profit-loss-by-class": {
+      const data = await profitAndLossByClass(business.id, from, to);
+      const cols: ClassColumn[] = data.columns;
+      const matrixRows = (nodes: ClassMatrixNode[], depth = 0): (string | number)[][] => {
+        const out: (string | number)[][] = [];
+        for (const node of nodes) {
+          const indent = "  ".repeat(depth);
+          out.push([
+            `${indent}${node.account.name}`,
+            ...cols.map((c) => node.own[c.key]),
+            cols.reduce((s, c) => s + node.own[c.key], 0),
+          ]);
+          out.push(...matrixRows(node.children, depth + 1));
+          if (node.children.length) {
+            out.push([`${indent}Total ${node.account.name}`, ...cols.map((c) => node.values[c.key]), node.total]);
+          }
+        }
+        return out;
+      };
+      const totalRow = (label: string, totals: Record<string, number>, grand: number): (string | number)[] => [
+        label,
+        ...cols.map((c) => totals[c.key]),
+        grand,
+      ];
+      filename = `profit-loss-by-class_${fromLabel}_${toDateInput(to)}.csv`;
+      rows = [
+        [`Profit & Loss by Class — ${business.name}`],
+        [`${fromLabel} to ${toDateInput(to)}`],
+        ["Account", ...cols.map((c) => c.name), "Total"],
+        ["Income"],
+        ...matrixRows(data.income),
+        totalRow("Total income", data.incomeTotals, data.totalIncome),
+        ["Expenses"],
+        ...matrixRows(data.expenses),
+        totalRow("Total expenses", data.expenseTotals, data.totalExpenses),
+        totalRow("Net income", data.netTotals, data.netIncome),
       ];
       break;
     }
