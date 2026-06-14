@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "../../../lib/db";
 import { getActiveBusiness } from "../../../lib/business";
-import { uploadToDrive } from "../../../lib/google";
+import { isGoogleConfigured, uploadToDrive } from "../../../lib/google";
+import { saveLocalFile } from "../../../lib/uploads";
 
 export async function POST(request: NextRequest) {
   const business = await getActiveBusiness();
@@ -19,23 +20,44 @@ export async function POST(request: NextRequest) {
 
   try {
     const buffer = Buffer.from(await file.arrayBuffer());
-    const uploaded = await uploadToDrive(business, {
-      name: file.name,
-      mimeType: file.type || "application/octet-stream",
-      buffer,
-    });
+
+    if (isGoogleConfigured()) {
+      const uploaded = await uploadToDrive(business, {
+        name: file.name,
+        mimeType: file.type || "application/octet-stream",
+        buffer,
+      });
+      const document = await prisma.document.create({
+        data: {
+          businessId: business.id,
+          name: file.name,
+          mimeType: file.type || null,
+          category,
+          storage: "drive",
+          driveFileId: uploaded.id,
+          webViewLink: uploaded.webViewLink,
+          entryId,
+          invoiceId,
+        },
+      });
+      return NextResponse.json({ id: document.id });
+    }
+
+    // No Google configured → store on local disk and serve it back via
+    // /api/documents/[id].
     const document = await prisma.document.create({
       data: {
         businessId: business.id,
         name: file.name,
         mimeType: file.type || null,
         category,
-        driveFileId: uploaded.id,
-        webViewLink: uploaded.webViewLink,
+        storage: "local",
         entryId,
         invoiceId,
       },
     });
+    const key = await saveLocalFile(business.id, document.id, file.name, buffer);
+    await prisma.document.update({ where: { id: document.id }, data: { localKey: key } });
     return NextResponse.json({ id: document.id });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Upload failed";

@@ -45,6 +45,9 @@ prisma/*.db-shm
 # file-sync metadata (Resilio/etc.) — must never land in the public repo
 prisma/.sync/
 
+# locally-stored document uploads (when Google Drive isn't configured)
+/uploads/
+
 # vercel
 .vercel
 

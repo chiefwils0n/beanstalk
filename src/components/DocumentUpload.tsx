@@ -77,7 +77,7 @@ export function DocumentUpload({
         </select>
       </div>
       <button className="btn btn-primary" disabled={busy}>
-        {busy ? "Uploading…" : "Upload to Drive"}
+        {busy ? "Uploading…" : "Upload"}
       </button>
       {error && <span className="pb-2 text-sm text-red-600 dark:text-red-400">{error}</span>}
     </form>

@@ -172,18 +172,21 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
         <div className="card">
           <h2 className="mb-2 font-semibold">Attached documents</h2>
           <ul className="text-sm">
-            {invoice.documents.map((doc) => (
-              <li key={doc.id}>
-                📎{" "}
-                {doc.webViewLink ? (
-                  <a href={doc.webViewLink} target="_blank" rel="noreferrer" className="text-emerald-600 hover:underline">
-                    {doc.name}
-                  </a>
-                ) : (
-                  doc.name
-                )}
-              </li>
-            ))}
+            {invoice.documents.map((doc) => {
+              const href = doc.storage === "local" ? `/api/documents/${doc.id}` : doc.webViewLink;
+              return (
+                <li key={doc.id}>
+                  📎{" "}
+                  {href ? (
+                    <a href={href} target="_blank" rel="noreferrer" className="text-emerald-600 hover:underline">
+                      {doc.name}
+                    </a>
+                  ) : (
+                    doc.name
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}

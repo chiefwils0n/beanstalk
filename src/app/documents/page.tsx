@@ -35,37 +35,34 @@ export default async function DocumentsPage() {
     <div className="flex flex-col gap-6">
       <h1 className="page-title">Documents</h1>
       <p className="text-sm text-zinc-500 dark:text-zinc-400">
-        Receipts, contracts, and statements are stored in your Google Drive under{" "}
-        <span className="font-mono">Beanstalk/{business.name}</span> and linked to transactions
-        and invoices here.
+        Receipts, contracts, and statements, linked to transactions and invoices.{" "}
+        {configured ? (
+          <>
+            Stored in your Google Drive under{" "}
+            <span className="font-mono">Beanstalk/{business.name}</span>.
+          </>
+        ) : (
+          "Stored on this server."
+        )}
       </p>
 
       {!configured && (
-        <div className="card border-amber-300 dark:border-amber-800">
-          <h2 className="mb-2 font-semibold">Set up Google Workspace integration</h2>
-          <ol className="list-decimal space-y-1 pl-5 text-sm text-zinc-600 dark:text-zinc-300">
-            <li>
-              Create an OAuth client at{" "}
-              <a
-                href="https://console.cloud.google.com/apis/credentials"
-                className="text-emerald-600 hover:underline"
-                target="_blank"
-                rel="noreferrer"
-              >
-                console.cloud.google.com/apis/credentials
-              </a>{" "}
-              (type: Web application) and enable the Google Drive API.
-            </li>
-            <li>
-              Add <span className="font-mono">http://localhost:3000/api/google/callback</span> as
-              an authorized redirect URI.
-            </li>
-            <li>
-              Put the client ID and secret in <span className="font-mono">.env</span> as{" "}
-              <span className="font-mono">GOOGLE_CLIENT_ID</span> /{" "}
-              <span className="font-mono">GOOGLE_CLIENT_SECRET</span>, then restart the app.
-            </li>
-          </ol>
+        <div className="card text-sm text-zinc-600 dark:text-zinc-300">
+          Uploads are saved to local storage on this server. To use Google Drive instead, set{" "}
+          <span className="font-mono">GOOGLE_CLIENT_ID</span> /{" "}
+          <span className="font-mono">GOOGLE_CLIENT_SECRET</span> in{" "}
+          <span className="font-mono">.env</span> (
+          <a
+            href="https://console.cloud.google.com/apis/credentials"
+            className="text-emerald-600 hover:underline"
+            target="_blank"
+            rel="noreferrer"
+          >
+            create an OAuth client
+          </a>
+          , enable the Drive API, add{" "}
+          <span className="font-mono">http://localhost:3000/api/google/callback</span> as a
+          redirect URI) and restart.
         </div>
       )}
 
@@ -81,32 +78,32 @@ export default async function DocumentsPage() {
       )}
 
       {configured && auth && (
-        <>
-          <div className="card flex items-center justify-between">
-            <p className="text-sm">
-              ✅ Connected to Google Drive{auth.email ? ` as ${auth.email}` : ""}.
-            </p>
-            <form action={disconnectGoogle}>
-              <ConfirmButton message="Disconnect Google Drive? Uploaded files stay in your Drive." className="btn btn-sm">
-                Disconnect
-              </ConfirmButton>
-            </form>
-          </div>
+        <div className="card flex items-center justify-between">
+          <p className="text-sm">
+            ✅ Connected to Google Drive{auth.email ? ` as ${auth.email}` : ""}.
+          </p>
+          <form action={disconnectGoogle}>
+            <ConfirmButton message="Disconnect Google Drive? Uploaded files stay in your Drive." className="btn btn-sm">
+              Disconnect
+            </ConfirmButton>
+          </form>
+        </div>
+      )}
 
-          <div className="card">
-            <h2 className="mb-3 font-semibold">Upload document</h2>
-            <DocumentUpload
-              entries={entries.map((e) => ({
-                id: e.id,
-                label: `${formatDate(e.date)} — ${e.memo.slice(0, 40)}`,
-              }))}
-              invoices={invoices.map((inv) => ({
-                id: inv.id,
-                label: `${inv.number} — ${inv.customer.name}`,
-              }))}
-            />
-          </div>
-        </>
+      {(!configured || auth) && (
+        <div className="card">
+          <h2 className="mb-3 font-semibold">Upload document</h2>
+          <DocumentUpload
+            entries={entries.map((e) => ({
+              id: e.id,
+              label: `${formatDate(e.date)} — ${e.memo.slice(0, 40)}`,
+            }))}
+            invoices={invoices.map((inv) => ({
+              id: inv.id,
+              label: `${inv.number} — ${inv.customer.name}`,
+            }))}
+          />
+        </div>
       )}
 
       <div className="card overflow-x-auto p-0">
@@ -131,13 +128,16 @@ export default async function DocumentsPage() {
             {documents.map((doc) => (
               <tr key={doc.id}>
                 <td className="td">
-                  {doc.webViewLink ? (
-                    <a href={doc.webViewLink} target="_blank" rel="noreferrer" className="text-emerald-600 hover:underline">
-                      📎 {doc.name}
-                    </a>
-                  ) : (
-                    <>📎 {doc.name}</>
-                  )}
+                  {(() => {
+                    const href = doc.storage === "local" ? `/api/documents/${doc.id}` : doc.webViewLink;
+                    return href ? (
+                      <a href={href} target="_blank" rel="noreferrer" className="text-emerald-600 hover:underline">
+                        📎 {doc.name}
+                      </a>
+                    ) : (
+                      <>📎 {doc.name}</>
+                    );
+                  })()}
                 </td>
                 <td className="td">
                   <span className="badge bg-zinc-200 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
@@ -161,7 +161,13 @@ export default async function DocumentsPage() {
                 <td className="td text-right">
                   <form action={deleteDocument}>
                     <input type="hidden" name="id" value={doc.id} />
-                    <ConfirmButton message={`Remove ${doc.name}? The Drive file will be moved to trash.`}>
+                    <ConfirmButton
+                      message={
+                        doc.storage === "local"
+                          ? `Remove ${doc.name}? The stored file will be deleted.`
+                          : `Remove ${doc.name}? The Drive file will be moved to trash.`
+                      }
+                    >
                       Delete
                     </ConfirmButton>
                   </form>

@@ -336,14 +336,16 @@ model RecurringLine {
   contact   Contact?             @relation(fields: [contactId], references: [id], onDelete: SetNull)
 }
 
-// category: RECEIPT | CONTRACT | OTHER
+// category: RECEIPT | CONTRACT | OTHER ; storage: drive | local
 model Document {
   id          String   @id @default(cuid())
   businessId  String
   name        String
   mimeType    String?
   category    String   @default("OTHER")
-  driveFileId String
+  storage     String   @default("drive")
+  driveFileId String? // set when storage = drive
+  localKey    String? // on-disk filename under the uploads dir, when storage = local
   webViewLink String?
   entryId     String?
   invoiceId   String?

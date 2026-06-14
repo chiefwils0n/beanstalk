@@ -1088,8 +1088,15 @@ export async function undoReconciliation(formData: FormData) {
 export async function deleteDocument(formData: FormData) {
   const id = str(formData, "id");
   const doc = await prisma.document.findUniqueOrThrow({ where: { id } });
-  const { trashDriveFile } = await import("./google");
-  await trashDriveFile(doc.driveFileId);
+  if (doc.storage === "local") {
+    if (doc.localKey) {
+      const { deleteLocalFile } = await import("./uploads");
+      await deleteLocalFile(doc.localKey);
+    }
+  } else if (doc.driveFileId) {
+    const { trashDriveFile } = await import("./google");
+    await trashDriveFile(doc.driveFileId);
+  }
   await prisma.document.delete({ where: { id } });
   revalidatePath("/documents");
 }
