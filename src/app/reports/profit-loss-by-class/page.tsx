@@ -71,35 +71,43 @@ function MatrixRows({
     <>
       {nodes.map((node) => {
         const isParent = node.children.length > 0;
+        // Each row shows the account's own (direct) postings — drillable to that
+        // account + class. Parents then get a rolled-up "Total <name>" row after
+        // their children (a subtotal across the subtree, not one ledger query).
+        const ownTotal = columns.reduce((s, c) => s + node.own[c.key], 0);
         return (
           <Fragment key={node.account.id}>
             <tr className={node.account.isArchived ? "opacity-50" : ""}>
               <td className={`td whitespace-nowrap ${isParent ? "font-semibold" : ""}`}>
                 <span style={{ paddingLeft: `${depth * 1.25}rem` }}>{node.account.name}</span>
               </td>
-              {/* Parent rows show rolled-up totals that don't map to one ledger
-                  query, so only leaf cells are drillable. */}
-              {columns.map((col) =>
-                isParent ? (
-                  <Amount key={col.key} value={node.values[col.key]} bold />
-                ) : (
-                  <DrillAmount
-                    key={col.key}
-                    value={node.values[col.key]}
-                    accountId={node.account.id}
-                    drill={drill}
-                    classId={col.key === UNCLASSIFIED_KEY ? "none" : col.key}
-                  />
-                )
-              )}
-              {isParent ? (
-                <Amount value={node.total} bold />
-              ) : (
-                <DrillAmount value={node.total} accountId={node.account.id} drill={drill} bold />
-              )}
+              {columns.map((col) => (
+                <DrillAmount
+                  key={col.key}
+                  value={node.own[col.key]}
+                  accountId={node.account.id}
+                  drill={drill}
+                  classId={col.key === UNCLASSIFIED_KEY ? "none" : col.key}
+                  bold={isParent}
+                />
+              ))}
+              <DrillAmount value={ownTotal} accountId={node.account.id} drill={drill} bold={isParent} />
             </tr>
             {isParent && (
-              <MatrixRows nodes={node.children} columns={columns} drill={drill} depth={depth + 1} />
+              <>
+                <MatrixRows nodes={node.children} columns={columns} drill={drill} depth={depth + 1} />
+                <tr>
+                  <td className="td whitespace-nowrap text-sm font-medium text-zinc-500">
+                    <span style={{ paddingLeft: `${depth * 1.25}rem` }}>
+                      Total {node.account.name}
+                    </span>
+                  </td>
+                  {columns.map((col) => (
+                    <Amount key={col.key} value={node.values[col.key]} bold />
+                  ))}
+                  <Amount value={node.total} bold />
+                </tr>
+              </>
             )}
           </Fragment>
         );

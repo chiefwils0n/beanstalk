@@ -139,9 +139,11 @@ export type ClassColumn = { key: string; name: string };
 
 export type ClassMatrixNode = {
   account: Account;
+  /** Direct (own) signed amount per column key, excluding descendants. */
+  own: Record<string, number>;
   /** Signed amount per column key, rolled up to include descendants. */
   values: Record<string, number>;
-  /** Row total across all columns. */
+  /** Row total across all columns (rolled up). */
   total: number;
   children: ClassMatrixNode[];
 };
@@ -205,9 +207,13 @@ export async function profitAndLossByClass(
     const nodes = new Map<string, ClassMatrixNode>();
     for (const account of typeAccounts) {
       const ownRow = own.get(account.id) ?? {};
+      const direct: Record<string, number> = {};
       const values: Record<string, number> = {};
-      for (const k of colKeys) values[k] = ownRow[k] ?? 0;
-      nodes.set(account.id, { account, values, total: 0, children: [] });
+      for (const k of colKeys) {
+        direct[k] = ownRow[k] ?? 0;
+        values[k] = ownRow[k] ?? 0;
+      }
+      nodes.set(account.id, { account, own: direct, values, total: 0, children: [] });
     }
     const roots: ClassMatrixNode[] = [];
     for (const node of nodes.values()) {
