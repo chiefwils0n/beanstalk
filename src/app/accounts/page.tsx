@@ -104,10 +104,10 @@ export default async function AccountsPage() {
         return (
           <div key={type} className="card">
             <h2
-              className={`mb-3 flex items-center justify-between rounded-lg border-l-4 px-3 py-2 text-base font-bold ${tone.bar} ${tone.text}`}
+              className={`mb-3 flex items-center justify-between rounded-lg border-l-4 px-3 py-2.5 text-xl font-bold ${tone.bar} ${tone.text}`}
             >
               {ACCOUNT_TYPE_LABELS[type as AccountType]}
-              <span className="money text-sm">{formatMoney(total)}</span>
+              <span className="money text-lg font-bold">{formatMoney(total)}</span>
             </h2>
             <table className="w-full">
               <thead>
