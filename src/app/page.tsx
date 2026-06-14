@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { prisma } from "../lib/db";
 import { requireBusiness } from "../lib/business";
 import { profitAndLoss, balanceSheet } from "../lib/accounting";
@@ -32,11 +33,11 @@ export default async function Dashboard() {
   ]);
 
   const cards = [
-    { label: "Income (MTD)", value: mtd.totalIncome, tone: "emerald" },
-    { label: "Expenses (MTD)", value: mtd.totalExpenses, tone: "rose" },
-    { label: "Net income (YTD)", value: ytd.netIncome, tone: "sky" },
-    { label: "Total assets", value: bs.totalAssets, tone: "indigo" },
-    { label: "Total liabilities", value: bs.totalLiabilities, tone: "amber" },
+    { label: "Income (MTD)", value: mtd.totalIncome, tone: "emerald", icon: "income" },
+    { label: "Expenses (MTD)", value: mtd.totalExpenses, tone: "rose", icon: "expense" },
+    { label: "Net income (YTD)", value: ytd.netIncome, tone: "sky", icon: "income" },
+    { label: "Total assets", value: bs.totalAssets, tone: "indigo", icon: "asset" },
+    { label: "Total liabilities", value: bs.totalLiabilities, tone: "amber", icon: "liability" },
   ];
 
   // Colored tint + left accent per tone; text stays neutral (black/white) for
@@ -81,14 +82,23 @@ export default async function Dashboard() {
           return (
             <div
               key={card.label}
-              className={`rounded-xl border-l-4 p-5 shadow-sm ${t.wrap}`}
+              className={`flex items-center gap-2 rounded-xl border-l-4 p-4 shadow-sm ${t.wrap}`}
             >
-              <p className={`text-xs font-semibold uppercase tracking-wide ${t.label}`}>
-                {card.label}
-              </p>
-              <p className={`mt-2 money text-2xl font-bold ${t.value}`}>
-                {formatMoney(card.value)}
-              </p>
+              <Image
+                src={`/icons/${card.icon}.png`}
+                alt=""
+                width={32}
+                height={31}
+                className="shrink-0"
+              />
+              <div className="min-w-0">
+                <p className={`text-[11px] font-semibold uppercase tracking-wide ${t.label}`}>
+                  {card.label}
+                </p>
+                <p className={`mt-0.5 money whitespace-nowrap text-lg font-bold tracking-tight ${t.value}`}>
+                  {formatMoney(card.value)}
+                </p>
+              </div>
             </div>
           );
         })}
