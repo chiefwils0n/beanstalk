@@ -89,13 +89,13 @@ export default async function ProfitLossPage({
         <table className="w-full">
           <tbody>
             <ReportSectionHeader label="Income" tone="income" />
-            <ReportTreeRows nodes={report.income} drill={drill} />
+            <ReportTreeRows nodes={report.income} drill={drill} drillOn="amount" />
             <tr>
               <td className="td font-semibold">Total income</td>
               <td className="td text-right money font-semibold">{formatMoney(report.totalIncome)}</td>
             </tr>
             <ReportSectionHeader label="Expenses" tone="expense" gap />
-            <ReportTreeRows nodes={report.expenses} drill={drill} />
+            <ReportTreeRows nodes={report.expenses} drill={drill} drillOn="amount" />
             <tr>
               <td className="td font-semibold">Total expenses</td>
               <td className="td text-right money font-semibold">{formatMoney(report.totalExpenses)}</td>

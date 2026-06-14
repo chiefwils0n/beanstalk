@@ -15,23 +15,36 @@ export function ledgerHref(accountId: string, drill?: DrillRange, includeSub = f
   return `/reports/general-ledger?${params.toString()}`;
 }
 
+const DRILL_LINK = "hover:text-emerald-600 hover:underline dark:hover:text-emerald-400";
+
 export function ReportTreeRows({
   nodes,
   depth = 0,
   hideZero = true,
   drill,
+  drillOn = "name",
 }: {
   nodes: AccountNode[];
   depth?: number;
   hideZero?: boolean;
   drill?: DrillRange;
+  /** Which cell is the drill-down link: the account "name" (default) or the
+   *  dollar "amount". */
+  drillOn?: "name" | "amount";
 }) {
   return (
     <>
       {nodes.map((node) => {
         if (hideZero && node.total === 0 && node.children.length === 0) return null;
         return (
-          <ReportTreeRow key={node.account.id} node={node} depth={depth} hideZero={hideZero} drill={drill} />
+          <ReportTreeRow
+            key={node.account.id}
+            node={node}
+            depth={depth}
+            hideZero={hideZero}
+            drill={drill}
+            drillOn={drillOn}
+          />
         );
       })}
     </>
@@ -43,13 +56,17 @@ function ReportTreeRow({
   depth,
   hideZero,
   drill,
+  drillOn,
 }: {
   node: AccountNode;
   depth: number;
   hideZero: boolean;
   drill?: DrillRange;
+  drillOn: "name" | "amount";
 }) {
   const hasChildren = node.children.length > 0;
+  const drillAmount = drillOn === "amount";
+  const ownAmount = formatMoney(hasChildren ? node.own : node.total);
   return (
     <>
       <tr>
@@ -57,31 +74,52 @@ function ReportTreeRow({
           {node.account.code && (
             <span className="mr-2 font-mono text-xs text-zinc-400">{node.account.code}</span>
           )}
-          <Link
-            href={ledgerHref(node.account.id, drill)}
-            className={`hover:text-emerald-600 hover:underline dark:hover:text-emerald-400 ${hasChildren ? "font-medium" : ""}`}
-          >
-            {node.account.name}
-          </Link>
+          {drillAmount ? (
+            <span className={hasChildren ? "font-medium" : ""}>{node.account.name}</span>
+          ) : (
+            <Link href={ledgerHref(node.account.id, drill)} className={`${DRILL_LINK} ${hasChildren ? "font-medium" : ""}`}>
+              {node.account.name}
+            </Link>
+          )}
         </td>
-        <td className="td text-right money">{formatMoney(hasChildren ? node.own : node.total)}</td>
+        <td className="td text-right money">
+          {drillAmount ? (
+            <Link href={ledgerHref(node.account.id, drill)} className={DRILL_LINK} title="View transactions">
+              {ownAmount}
+            </Link>
+          ) : (
+            ownAmount
+          )}
+        </td>
       </tr>
-      <ReportTreeRows nodes={node.children} depth={depth + 1} hideZero={hideZero} drill={drill} />
+      <ReportTreeRows nodes={node.children} depth={depth + 1} hideZero={hideZero} drill={drill} drillOn={drillOn} />
       {hasChildren && (
         <tr>
           <td
             className="td text-sm font-medium text-zinc-500"
             style={{ paddingLeft: `${0.75 + depth * 1.25}rem` }}
           >
-            <Link
-              href={ledgerHref(node.account.id, drill, true)}
-              className="hover:text-emerald-600 hover:underline dark:hover:text-emerald-400"
-              title="Includes sub-accounts"
-            >
-              Total {node.account.name}
-            </Link>
+            {drillAmount ? (
+              <span>Total {node.account.name}</span>
+            ) : (
+              <Link href={ledgerHref(node.account.id, drill, true)} className={DRILL_LINK} title="Includes sub-accounts">
+                Total {node.account.name}
+              </Link>
+            )}
           </td>
-          <td className="td text-right money font-medium">{formatMoney(node.total)}</td>
+          <td className="td text-right money font-medium">
+            {drillAmount ? (
+              <Link
+                href={ledgerHref(node.account.id, drill, true)}
+                className={DRILL_LINK}
+                title="View transactions (includes sub-accounts)"
+              >
+                {formatMoney(node.total)}
+              </Link>
+            ) : (
+              formatMoney(node.total)
+            )}
+          </td>
         </tr>
       )}
     </>

@@ -47,19 +47,19 @@ export default async function BalanceSheetPage({
         <table className="w-full">
           <tbody>
             <ReportSectionHeader label="Assets" tone="asset" />
-            <ReportTreeRows nodes={report.assets} drill={{ to: toDateInput(asOf) }} />
+            <ReportTreeRows nodes={report.assets} drill={{ to: toDateInput(asOf) }} drillOn="amount" />
             <tr>
               <td className="td font-semibold">Total assets</td>
               <td className="td text-right money font-semibold">{formatMoney(report.totalAssets)}</td>
             </tr>
             <ReportSectionHeader label="Liabilities" tone="liability" gap />
-            <ReportTreeRows nodes={report.liabilities} drill={{ to: toDateInput(asOf) }} />
+            <ReportTreeRows nodes={report.liabilities} drill={{ to: toDateInput(asOf) }} drillOn="amount" />
             <tr>
               <td className="td font-semibold">Total liabilities</td>
               <td className="td text-right money font-semibold">{formatMoney(report.totalLiabilities)}</td>
             </tr>
             <ReportSectionHeader label="Equity" tone="equity" gap />
-            <ReportTreeRows nodes={report.equity} drill={{ to: toDateInput(asOf) }} />
+            <ReportTreeRows nodes={report.equity} drill={{ to: toDateInput(asOf) }} drillOn="amount" />
             <tr>
               <td className="td">
                 <Link
