@@ -96,7 +96,7 @@ function MatrixRows({
             {isParent && (
               <>
                 <MatrixRows nodes={node.children} columns={columns} drill={drill} depth={depth + 1} />
-                <tr>
+                <tr className="total-row">
                   <td className="td whitespace-nowrap text-sm font-medium text-zinc-500">
                     <span style={{ paddingLeft: `${depth * 1.25}rem` }}>
                       <Link
@@ -137,7 +137,7 @@ function TotalRow({
 }) {
   const net = tone === "net";
   return (
-    <tr className="border-t-2 border-zinc-200 dark:border-zinc-700">
+    <tr className={net ? "grand-total-row" : "total-row"}>
       <td className="td font-bold whitespace-nowrap">{label}</td>
       {columns.map((col) => (
         <td

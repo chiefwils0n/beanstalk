@@ -51,4 +51,12 @@ body {
     font-variant-numeric: tabular-nums slashed-zero;
     font-feature-settings: "tnum", "zero";
   }
+  /* Report total rows: a subtle shade for subtotals and a stronger one for
+     grand/net totals, so they stand out clearly from the line items. */
+  .total-row > td {
+    @apply border-t border-zinc-200 bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800/60;
+  }
+  .grand-total-row > td {
+    @apply border-t-2 border-zinc-300 bg-zinc-200/80 dark:border-zinc-600 dark:bg-zinc-800;
+  }
 }

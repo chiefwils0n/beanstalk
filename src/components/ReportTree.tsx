@@ -94,7 +94,7 @@ function ReportTreeRow({
       </tr>
       <ReportTreeRows nodes={node.children} depth={depth + 1} hideZero={hideZero} drill={drill} drillOn={drillOn} />
       {hasChildren && (
-        <tr>
+        <tr className="total-row">
           <td
             className="td text-sm font-medium text-zinc-500"
             style={{ paddingLeft: `${0.75 + depth * 1.25}rem` }}

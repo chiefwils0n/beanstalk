@@ -90,7 +90,7 @@ export default async function TaxSummaryPage({
           </thead>
           <TaxGroupRows groups={report.incomeGroups} year={year} />
           <tbody>
-            <tr className="bg-zinc-50 dark:bg-zinc-800/50">
+            <tr className="total-row">
               <td className="td font-bold">Total income</td>
               <td className="td text-right money font-bold">{formatMoney(report.totalIncome)}</td>
             </tr>
@@ -108,7 +108,7 @@ export default async function TaxSummaryPage({
           </thead>
           <TaxGroupRows groups={report.expenseGroups} year={year} />
           <tbody>
-            <tr className="bg-zinc-50 dark:bg-zinc-800/50">
+            <tr className="total-row">
               <td className="td font-bold">Total expenses</td>
               <td className="td text-right money font-bold">{formatMoney(report.totalExpenses)}</td>
             </tr>

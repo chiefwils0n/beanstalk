@@ -48,13 +48,13 @@ export default async function BalanceSheetPage({
           <tbody>
             <ReportSectionHeader label="Assets" tone="asset" />
             <ReportTreeRows nodes={report.assets} drill={{ to: toDateInput(asOf) }} drillOn="amount" />
-            <tr>
+            <tr className="total-row">
               <td className="td font-semibold">Total assets</td>
               <td className="td text-right money font-semibold">{formatMoney(report.totalAssets)}</td>
             </tr>
             <ReportSectionHeader label="Liabilities" tone="liability" gap />
             <ReportTreeRows nodes={report.liabilities} drill={{ to: toDateInput(asOf) }} drillOn="amount" />
-            <tr>
+            <tr className="total-row">
               <td className="td font-semibold">Total liabilities</td>
               <td className="td text-right money font-semibold">{formatMoney(report.totalLiabilities)}</td>
             </tr>
@@ -71,11 +71,11 @@ export default async function BalanceSheetPage({
               </td>
               <td className="td text-right money">{formatMoney(report.netIncome)}</td>
             </tr>
-            <tr>
+            <tr className="total-row">
               <td className="td font-semibold">Total equity</td>
               <td className="td text-right money font-semibold">{formatMoney(report.totalEquity)}</td>
             </tr>
-            <tr className="bg-zinc-50 dark:bg-zinc-800/50">
+            <tr className="grand-total-row">
               <td className="td font-bold">Liabilities + equity</td>
               <td className="td text-right money font-bold">
                 {formatMoney(report.totalLiabilities + report.totalEquity)}

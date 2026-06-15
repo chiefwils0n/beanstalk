@@ -78,7 +78,7 @@ export default async function TrialBalancePage({
             ))}
           </tbody>
           <tfoot>
-            <tr className="bg-zinc-50 dark:bg-zinc-800/50">
+            <tr className="grand-total-row">
               <td className="td font-bold">Totals</td>
               <td className="td text-right money font-bold">{formatMoney(report.totalDebit)}</td>
               <td className="td text-right money font-bold">{formatMoney(report.totalCredit)}</td>

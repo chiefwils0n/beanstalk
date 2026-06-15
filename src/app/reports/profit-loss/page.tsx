@@ -90,17 +90,17 @@ export default async function ProfitLossPage({
           <tbody>
             <ReportSectionHeader label="Income" tone="income" />
             <ReportTreeRows nodes={report.income} drill={drill} drillOn="amount" />
-            <tr>
+            <tr className="total-row">
               <td className="td font-semibold">Total income</td>
               <td className="td text-right money font-semibold">{formatMoney(report.totalIncome)}</td>
             </tr>
             <ReportSectionHeader label="Expenses" tone="expense" gap />
             <ReportTreeRows nodes={report.expenses} drill={drill} drillOn="amount" />
-            <tr>
+            <tr className="total-row">
               <td className="td font-semibold">Total expenses</td>
               <td className="td text-right money font-semibold">{formatMoney(report.totalExpenses)}</td>
             </tr>
-            <tr className="bg-zinc-50 dark:bg-zinc-800/50">
+            <tr className="grand-total-row">
               <td className="td text-base font-bold">Net income</td>
               <td className={`td text-right money text-base font-bold ${report.netIncome < 0 ? "text-red-600 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"}`}>
                 {formatMoney(report.netIncome)}
