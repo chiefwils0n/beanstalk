@@ -59,23 +59,32 @@ export default async function TrialBalancePage({
             </tr>
           </thead>
           <tbody>
-            {report.rows.map((row) => (
-              <tr key={row.account.id}>
-                <td className="td">
-                  {row.account.code && (
-                    <span className="mr-2 font-mono text-xs text-zinc-400">{row.account.code}</span>
-                  )}
-                  <Link
-                    href={ledgerHref(row.account.id, { from: sp.from, to: sp.to })}
-                    className="hover:text-emerald-600 hover:underline dark:hover:text-emerald-400"
-                  >
-                    {row.account.name}
-                  </Link>
-                </td>
-                <td className="td text-right money">{row.debit ? formatMoney(row.debit) : ""}</td>
-                <td className="td text-right money">{row.credit ? formatMoney(row.credit) : ""}</td>
-              </tr>
-            ))}
+            {report.rows.map((row) => {
+              const isPL = row.account.type === "INCOME" || row.account.type === "EXPENSE";
+              return (
+                <tr key={row.account.id}>
+                  <td className="td">
+                    {row.account.code && (
+                      <span className="mr-2 font-mono text-xs text-zinc-400">{row.account.code}</span>
+                    )}
+                    {row.synthetic ? (
+                      <span className="text-zinc-500">{row.account.name}</span>
+                    ) : (
+                      <Link
+                        // Balance-sheet accounts are cumulative, so drill to all
+                        // activity through `to`; income/expense drill the period.
+                        href={ledgerHref(row.account.id, { from: isPL ? sp.from : undefined, to: sp.to })}
+                        className="hover:text-emerald-600 hover:underline dark:hover:text-emerald-400"
+                      >
+                        {row.account.name}
+                      </Link>
+                    )}
+                  </td>
+                  <td className="td text-right money">{row.debit ? formatMoney(row.debit) : ""}</td>
+                  <td className="td text-right money">{row.credit ? formatMoney(row.credit) : ""}</td>
+                </tr>
+              );
+            })}
           </tbody>
           <tfoot>
             <tr className="grand-total-row">

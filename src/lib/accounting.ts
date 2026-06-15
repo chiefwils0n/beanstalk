@@ -327,22 +327,62 @@ export async function balanceSheet(businessId: string, asOf: Date) {
   };
 }
 
+export type TrialBalanceRow = {
+  account: { id: string; code: string | null; name: string; type: string };
+  debit: number;
+  credit: number;
+  synthetic?: boolean;
+};
+
+/**
+ * Trial balance as of `to`, optionally for a period starting at `from`.
+ *
+ * A trial balance is a point-in-time snapshot, so balance-sheet accounts
+ * (asset/liability/equity) are **cumulative through `to`** — not just the
+ * period's movement. Income/expense accounts show only the period (`from`..`to`),
+ * matching how a P&L is read for the year.
+ *
+ * Because Beanstalk keeps a continuous ledger (no year-end closing entry), the
+ * earnings accumulated *before* `from` aren't sitting in an equity account — so
+ * we derive them and add a synthetic "Retained Earnings (prior periods)" row.
+ * Without it the cumulative balance-sheet side wouldn't equal the period-only
+ * income/expense side. This mirrors how QuickBooks reports Retained Earnings.
+ */
 export async function trialBalance(businessId: string, from?: Date, to?: Date) {
-  const [accounts, balances] = await Promise.all([
+  const [accounts, cumulative, period] = await Promise.all([
     prisma.account.findMany({ where: { businessId }, orderBy: { code: "asc" } }),
-    getBalances(businessId, { from, to }),
+    getBalances(businessId, { to }), // cumulative through `to` (balance-sheet accounts)
+    getBalances(businessId, { from, to }), // period activity (income/expense accounts)
   ]);
-  const rows = accounts
+  const isPL = (t: string) => t === "INCOME" || t === "EXPENSE";
+  const rows: TrialBalanceRow[] = accounts
     .map((account) => {
-      const raw = balances.get(account.id) ?? { debit: 0, credit: 0 };
+      const raw = (isPL(account.type) ? period : cumulative).get(account.id) ?? { debit: 0, credit: 0 };
       const net = raw.debit - raw.credit;
-      return {
-        account,
-        debit: net > 0 ? net : 0,
-        credit: net < 0 ? -net : 0,
-      };
+      return { account, debit: net > 0 ? net : 0, credit: net < 0 ? -net : 0 };
     })
     .filter((r) => r.debit !== 0 || r.credit !== 0);
+
+  if (from) {
+    // Earnings before `from` = (income/expense cumulative through `to`) minus
+    // (income/expense for the period). Carried into equity as retained earnings.
+    let priorNet = 0; // (debit − credit); positive = accumulated loss (debit)
+    for (const a of accounts) {
+      if (!isPL(a.type)) continue;
+      const c = cumulative.get(a.id) ?? { debit: 0, credit: 0 };
+      const p = period.get(a.id) ?? { debit: 0, credit: 0 };
+      priorNet += c.debit - c.credit - (p.debit - p.credit);
+    }
+    if (priorNet !== 0) {
+      rows.push({
+        account: { id: "__retained_earnings_prior__", code: "3090", name: "Retained Earnings (prior periods)", type: "EQUITY" },
+        debit: priorNet > 0 ? priorNet : 0,
+        credit: priorNet < 0 ? -priorNet : 0,
+        synthetic: true,
+      });
+      rows.sort((a, b) => (a.account.code ?? a.account.name).localeCompare(b.account.code ?? b.account.name));
+    }
+  }
   return {
     rows,
     totalDebit: rows.reduce((s, r) => s + r.debit, 0),
