@@ -85,7 +85,7 @@ export type LoanLike = {
   firstPaymentDate: Date;
 };
 
-export type PaymentLike = { principal: number; interest: number };
+export type PaymentLike = { principal: number; interest: number; date?: Date };
 
 export type DerivedPayment = {
   id: string;
@@ -148,7 +148,14 @@ export function loanState(loan: LoanLike, payments: PaymentLike[]) {
   const paidPrincipal = payments.reduce((s, p) => s + p.principal, 0);
   const paidInterest = payments.reduce((s, p) => s + p.interest, 0);
   const balance = Math.max(0, loan.principal - paidPrincipal);
-  const nextDate = addMonthsUTC(loan.firstPaymentDate, payments.length);
+  // Next payment is due the month after the latest recorded payment — derived
+  // from actual dates, not the payment count, so irregular cadences (skipped or
+  // doubled-up months) never make the projection collide with a recorded payment.
+  const lastDate = payments.reduce<Date | null>(
+    (max, p) => (p.date && (!max || p.date > max) ? p.date : max),
+    null
+  );
+  const nextDate = lastDate ? addMonthsUTC(lastDate, 1) : loan.firstPaymentDate;
   const projected = projectSchedule({
     balance,
     annualRatePct: loan.annualRate,
