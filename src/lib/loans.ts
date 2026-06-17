@@ -148,14 +148,20 @@ export function loanState(loan: LoanLike, payments: PaymentLike[]) {
   const paidPrincipal = payments.reduce((s, p) => s + p.principal, 0);
   const paidInterest = payments.reduce((s, p) => s + p.interest, 0);
   const balance = Math.max(0, loan.principal - paidPrincipal);
-  // Next payment is due the month after the latest recorded payment — derived
-  // from actual dates, not the payment count, so irregular cadences (skipped or
-  // doubled-up months) never make the projection collide with a recorded payment.
+  // Next due is the regular monthly slot — anchored to the loan's payment day
+  // from firstPaymentDate — that falls strictly after the latest recorded
+  // payment. Anchoring (rather than "last payment + 1 month") means an off-cycle
+  // or principal-only payment lowers the balance without dragging the projected
+  // due dates off their normal day-of-month, and never collides with a recorded
+  // payment even when the cadence has skipped or doubled-up months.
   const lastDate = payments.reduce<Date | null>(
     (max, p) => (p.date && (!max || p.date > max) ? p.date : max),
     null
   );
-  const nextDate = lastDate ? addMonthsUTC(lastDate, 1) : loan.firstPaymentDate;
+  let nextDate = loan.firstPaymentDate;
+  for (let i = 1; lastDate && nextDate <= lastDate && i <= 1200; i++) {
+    nextDate = addMonthsUTC(loan.firstPaymentDate, i);
+  }
   const projected = projectSchedule({
     balance,
     annualRatePct: loan.annualRate,
