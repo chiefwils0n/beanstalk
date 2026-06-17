@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "../../../lib/db";
-import { loanState, derivePayments } from "../../../lib/loans";
+import { loanState, derivePayments, totalInterest } from "../../../lib/loans";
 import { deleteLoan, deleteLoanPayment, closeLoan, reopenLoan } from "../../../lib/actions";
 import { formatMoney, formatDate, toDateInput, todayUTC } from "../../../lib/money";
 import { PayoffChart, SplitChart } from "../../../components/LoanCharts";
@@ -38,6 +38,15 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
     running -= payment.principal;
     historyBalances.push(Math.max(running, 0));
   }
+
+  // Are extra principal payments putting this loan ahead of its original
+  // schedule? Compare the original baseline to actual-paid + projected. Only
+  // surfaced when genuinely ahead (≥1 fewer payment), so on-schedule loans
+  // show nothing rather than rounding noise.
+  const interestSaved =
+    totalInterest(state.baseline) - (state.paidInterest + state.remainingInterest);
+  const monthsSaved = state.baseline.length - (payments.length + state.projected.length);
+  const aheadOfSchedule = !closed && !state.isPaidOff && monthsSaved >= 1 && interestSaved > 0;
 
   const cards = [
     { label: "Current balance", value: formatMoney(state.balance) },
@@ -134,6 +143,22 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
           </div>
         ))}
       </div>
+
+      {aheadOfSchedule && (
+        <div className="card border-l-4 border-l-emerald-500 bg-emerald-50 text-sm dark:bg-emerald-950/40">
+          🏃 <span className="font-medium">Ahead of schedule.</span> From your extra principal, you&apos;re
+          on track to pay off about{" "}
+          <span className="font-semibold">
+            {monthsSaved} month{monthsSaved > 1 ? "s" : ""}
+          </span>{" "}
+          sooner and save roughly{" "}
+          <span className="money font-semibold">{formatMoney(interestSaved)}</span> in interest versus the
+          original {loan.termMonths}-month plan.{" "}
+          <span className="text-zinc-500 dark:text-zinc-400">
+            (Estimate from the current balance and rate.)
+          </span>
+        </div>
+      )}
 
       {!state.isPaidOff && !closed && (
         <div className="card">
