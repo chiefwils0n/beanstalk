@@ -1,9 +1,66 @@
+import { Fragment } from "react";
 import Link from "next/link";
 import { requireBusiness } from "../../../lib/business";
 import { taxSummary } from "../../../lib/accounting";
 import { formatMoney, todayUTC } from "../../../lib/money";
 import type { TaxGroup } from "../../../lib/accounting";
 import { ledgerHref } from "../../../components/ReportTree";
+
+const SCHEDULE_ORDER = [
+  "Schedule C (business)",
+  "Schedule E (rental)",
+  "Schedule B (interest & dividends)",
+  "Unmapped / other",
+];
+
+/** Derive the IRS schedule from a tax-line label (e.g. "Rents received (Sch E Line 3)"). */
+function scheduleOf(taxLine: string): string {
+  const t = taxLine.toLowerCase();
+  if (t.includes("sch c") || t.includes("schedule c")) return "Schedule C (business)";
+  if (t.includes("sch e") || t.includes("schedule e")) return "Schedule E (rental)";
+  if (t.includes("sch b") || t.includes("schedule b")) return "Schedule B (interest & dividends)";
+  return "Unmapped / other";
+}
+
+function bySchedule(groups: TaxGroup[]): { schedule: string; groups: TaxGroup[]; total: number }[] {
+  const map = new Map<string, TaxGroup[]>();
+  for (const g of groups) {
+    const s = scheduleOf(g.taxLine);
+    map.set(s, [...(map.get(s) ?? []), g]);
+  }
+  return [...map.entries()]
+    .map(([schedule, gs]) => ({ schedule, groups: gs, total: gs.reduce((sum, g) => sum + g.total, 0) }))
+    .sort((a, b) => SCHEDULE_ORDER.indexOf(a.schedule) - SCHEDULE_ORDER.indexOf(b.schedule));
+}
+
+/** Tax-line groups bucketed under IRS-schedule headers with per-schedule subtotals. */
+function ScheduleGroupedRows({ groups, year }: { groups: TaxGroup[]; year: number }) {
+  return (
+    <>
+      {bySchedule(groups).map((sec) => (
+        <Fragment key={sec.schedule}>
+          <tbody>
+            <tr>
+              <td
+                colSpan={2}
+                className="td bg-zinc-100 text-xs font-semibold tracking-wide text-zinc-600 uppercase dark:bg-zinc-800/60 dark:text-zinc-300"
+              >
+                {sec.schedule}
+              </td>
+            </tr>
+          </tbody>
+          <TaxGroupRows groups={sec.groups} year={year} />
+          <tbody>
+            <tr className="total-row">
+              <td className="td font-semibold">Subtotal — {sec.schedule}</td>
+              <td className="td text-right money font-semibold">{formatMoney(sec.total)}</td>
+            </tr>
+          </tbody>
+        </Fragment>
+      ))}
+    </>
+  );
+}
 
 function TaxGroupRows({ groups, year }: { groups: TaxGroup[]; year: number }) {
   const drill = { from: `${year}-01-01`, to: `${year}-12-31` };
@@ -38,12 +95,13 @@ function TaxGroupRows({ groups, year }: { groups: TaxGroup[]; year: number }) {
 export default async function TaxSummaryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ year?: string }>;
+  searchParams: Promise<{ year?: string; group?: string }>;
 }) {
   const business = await requireBusiness();
   const sp = await searchParams;
   const currentYear = todayUTC().getUTCFullYear();
   const year = sp.year ? Number(sp.year) : currentYear - 1;
+  const groupBy = sp.group === "schedule" ? "schedule" : "line";
   const report = await taxSummary(business.id, year);
   const years = Array.from({ length: 6 }, (_, i) => currentYear - i);
 
@@ -57,8 +115,8 @@ export default async function TaxSummaryPage({
           <h1 className="page-title mt-1">Tax Summary — {year}</h1>
           <p className="text-sm text-zinc-500">
             {business.name}
-            {business.taxId && ` · EIN ${business.taxId}`} · grouped by tax line for your
-            accountant
+            {business.taxId && ` · EIN ${business.taxId}`} · grouped by tax{" "}
+            {groupBy === "schedule" ? "schedule" : "line"} for your accountant
           </p>
         </div>
         <a className="btn btn-sm" href={`/api/export?report=tax-summary&year=${year}`}>
@@ -77,6 +135,13 @@ export default async function TaxSummaryPage({
             ))}
           </select>
         </div>
+        <div>
+          <label className="label">Group by</label>
+          <select name="group" defaultValue={groupBy} className="input">
+            <option value="line">Tax line</option>
+            <option value="schedule">Tax schedule</option>
+          </select>
+        </div>
         <button className="btn">Run report</button>
       </form>
 
@@ -88,7 +153,11 @@ export default async function TaxSummaryPage({
               <th className="th text-right">Amount</th>
             </tr>
           </thead>
-          <TaxGroupRows groups={report.incomeGroups} year={year} />
+          {groupBy === "schedule" ? (
+            <ScheduleGroupedRows groups={report.incomeGroups} year={year} />
+          ) : (
+            <TaxGroupRows groups={report.incomeGroups} year={year} />
+          )}
           <tbody>
             <tr className="total-row">
               <td className="td font-bold">Total income</td>
@@ -106,7 +175,11 @@ export default async function TaxSummaryPage({
               <th className="th text-right">Amount</th>
             </tr>
           </thead>
-          <TaxGroupRows groups={report.expenseGroups} year={year} />
+          {groupBy === "schedule" ? (
+            <ScheduleGroupedRows groups={report.expenseGroups} year={year} />
+          ) : (
+            <TaxGroupRows groups={report.expenseGroups} year={year} />
+          )}
           <tbody>
             <tr className="total-row">
               <td className="td font-bold">Total expenses</td>
