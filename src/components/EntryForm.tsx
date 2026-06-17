@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createEntry, updateEntry } from "../lib/actions";
 import { parseMoney, formatMoney } from "../lib/money";
+import { DOCUMENT_CATEGORIES } from "../lib/types";
 
 export type AccountOption = { id: string; label: string; type: string };
 export type TagOption = { id: string; name: string; color: string };
@@ -96,6 +97,12 @@ export function EntryForm({
   const [lines, setLines] = useState<LineState[]>(
     initial?.lines?.length ? initial.lines : [emptyLine(), emptyLine()]
   );
+  // Files to attach on save, plus their category. `createdId` remembers a
+  // just-created entry so a re-save (e.g. after an upload hiccup) updates it
+  // instead of posting a duplicate.
+  const [files, setFiles] = useState<File[]>([]);
+  const [docCategory, setDocCategory] = useState<string>("RECEIPT");
+  const [createdId, setCreatedId] = useState<string | null>(null);
 
   const setLine = (i: number, patch: Partial<LineState>) =>
     setLines((prev) => prev.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
@@ -121,12 +128,38 @@ export function EntryForm({
       })),
     };
     startTransition(async () => {
-      const result = entryId ? await updateEntry(entryId, payload) : await createEntry(payload);
+      const existingId = entryId ?? createdId;
+      const result: { error?: string; id?: string } = existingId
+        ? await updateEntry(existingId, payload)
+        : await createEntry(payload);
       if (result.error) {
         setError(result.error);
         return;
       }
-      router.push("/transactions");
+      const targetId: string | undefined = existingId ?? result.id;
+      if (!entryId && !createdId && targetId) setCreatedId(targetId);
+
+      const hadFiles = files.length > 0;
+      if (hadFiles && targetId) {
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          const fd = new FormData();
+          fd.set("file", file);
+          fd.set("category", docCategory);
+          fd.set("entryId", targetId);
+          const res = await fetch("/api/documents", { method: "POST", body: fd });
+          if (!res.ok) {
+            const body = await res.json().catch(() => ({}));
+            // Entry is saved; keep the unsent files so a re-save retries just those.
+            setFiles(files.slice(i));
+            setError(`Entry saved, but "${file.name}" didn't upload (${body.error || res.status}). Re-save to retry.`);
+            return;
+          }
+        }
+        setFiles([]);
+      }
+      // Land on the entry's detail page when files were attached so they're visible.
+      router.push(hadFiles && targetId ? `/transactions/${targetId}` : "/transactions");
       router.refresh();
     });
   };
@@ -294,6 +327,34 @@ export function EntryForm({
           </div>
         </div>
       )}
+
+      <div>
+        <label className="label">Attachments (optional)</label>
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            type="file"
+            multiple
+            className="input max-w-xs"
+            onChange={(e) => setFiles(e.target.files ? Array.from(e.target.files) : [])}
+          />
+          <select
+            className="input w-44"
+            value={docCategory}
+            onChange={(e) => setDocCategory(e.target.value)}
+          >
+            {DOCUMENT_CATEGORIES.map((c) => (
+              <option key={c} value={c}>
+                {c.charAt(0) + c.slice(1).toLowerCase()}
+              </option>
+            ))}
+          </select>
+        </div>
+        {files.length > 0 && (
+          <p className="mt-1 text-xs text-zinc-500">
+            {files.length} file{files.length > 1 ? "s" : ""} ready: {files.map((f) => f.name).join(", ")}
+          </p>
+        )}
+      </div>
 
       <div className="flex items-center gap-3">
         <button className="btn btn-primary" disabled={pending || !balanced} onClick={submit}>

@@ -303,7 +303,7 @@ async function recordEntryAudit(action: string, entry: EntryForAudit) {
   });
 }
 
-export async function createEntry(input: EntryInput): Promise<{ error?: string }> {
+export async function createEntry(input: EntryInput): Promise<{ error?: string; id?: string }> {
   const business = await requireBusiness();
   const result = validateEntry(input);
   if ("error" in result) return { error: result.error };
@@ -321,7 +321,7 @@ export async function createEntry(input: EntryInput): Promise<{ error?: string }
   await recordEntryAudit("CREATED", created);
   revalidatePath("/transactions");
   revalidatePath("/");
-  return {};
+  return { id: created.id };
 }
 
 const RECONCILED_EDIT_MESSAGE =
