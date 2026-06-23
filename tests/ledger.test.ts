@@ -26,6 +26,21 @@ describe("checkBalanced — the double-entry invariant", () => {
     );
   });
 
+  it("rejects a one-cent imbalance", () => {
+    expect(checkBalanced([{ debit: 1001, credit: 0 }, { debit: 0, credit: 1000 }])).toContain(
+      "debits 1001"
+    );
+  });
+
+  it("keeps large integer-cent totals exact", () => {
+    expect(
+      checkBalanced([
+        { debit: Number.MAX_SAFE_INTEGER, credit: 0 },
+        { debit: 0, credit: Number.MAX_SAFE_INTEGER },
+      ])
+    ).toBeNull();
+  });
+
   it("rejects negative amounts", () => {
     expect(checkBalanced([{ debit: -1000, credit: 0 }, { debit: 0, credit: -1000 }])).toMatch(
       /must be positive/
