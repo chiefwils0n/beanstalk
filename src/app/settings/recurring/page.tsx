@@ -19,7 +19,11 @@ export default async function RecurringPage() {
     include: { lines: true, _count: { select: { entries: true } } },
     orderBy: { nextRun: "asc" },
   });
-  const dueCount = recurring.filter((r) => r.isActive && r.nextRun <= today).length;
+  // A schedule whose next date falls in a closed period can't post until the
+  // closing date moves (or the schedule's next date does).
+  const lockDate = business.lockDate;
+  const locked = (date: Date) => lockDate !== null && date <= lockDate;
+  const dueCount = recurring.filter((r) => r.isActive && r.nextRun <= today && !locked(r.nextRun)).length;
 
   return (
     <div className="flex flex-col gap-6">
@@ -85,13 +89,13 @@ export default async function RecurringPage() {
                   </td>
                   <td className={`td whitespace-nowrap ${due ? "font-medium text-amber-600 dark:text-amber-400" : "text-zinc-500"}`}>
                     {formatDate(r.nextRun)}
-                    {due && " (due)"}
+                    {locked(r.nextRun) ? " (closed period)" : due && " (due)"}
                   </td>
                   <td className="td text-right money">{formatMoney(amount)}</td>
                   <td className="td text-right">{r._count.entries}</td>
                   <td className="td">
                     <div className="flex justify-end gap-1">
-                      {r.isActive && (
+                      {r.isActive && !locked(r.nextRun) && (
                         <form action={postRecurringNow}>
                           <input type="hidden" name="id" value={r.id} />
                           <button className="btn btn-sm">Post now</button>

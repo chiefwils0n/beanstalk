@@ -68,9 +68,17 @@ export default async function BudgetVsActualPage({
             {report && ` · ${formatDate(report.from)} – ${formatDate(report.to)}`}
           </p>
         </div>
-        <Link href={`/settings/budget?year=${to.year}`} className="btn btn-sm">
-          Edit budget
-        </Link>
+        <div className="flex gap-2">
+          <a
+            className="btn btn-sm"
+            href={`/api/export?report=budget-vs-actual&from=${formatYearMonth(from)}&to=${formatYearMonth(to)}`}
+          >
+            Export CSV
+          </a>
+          <Link href={`/settings/budget?year=${to.year}`} className="btn btn-sm">
+            Edit budget
+          </Link>
+        </div>
       </div>
 
       <form className="card flex flex-wrap items-end gap-3" method="GET">

@@ -33,14 +33,22 @@ export default async function VendorPaymentsPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <Link href="/reports" className="text-sm text-emerald-600 hover:underline">
-          ← Reports
-        </Link>
-        <h1 className="page-title mt-1">1099 Vendor Payments — {year}</h1>
-        <p className="text-sm text-zinc-500">
-          {business.name} · cash paid to each contact, flagged at {formatMoney(threshold)} or more
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <Link href="/reports" className="text-sm text-emerald-600 hover:underline">
+            ← Reports
+          </Link>
+          <h1 className="page-title mt-1">1099 Vendor Payments — {year}</h1>
+          <p className="text-sm text-zinc-500">
+            {business.name} · cash paid to each contact, flagged at {formatMoney(threshold)} or more
+          </p>
+        </div>
+        <a
+          className="btn btn-sm"
+          href={`/api/export?report=vendor-payments&year=${year}&threshold=${threshold / 100}${typeFilter ? `&type=${encodeURIComponent(typeFilter)}` : ""}`}
+        >
+          Export CSV
+        </a>
       </div>
 
       <form className="card flex flex-wrap items-end gap-3" method="GET">

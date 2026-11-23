@@ -1438,13 +1438,21 @@ async function billPaidAmount(billId: string, payableId: string): Promise<number
   return result._sum.debit ?? 0;
 }
 
-/**
- * Enter a vendor bill. It posts straight away: each line is debited to its
- * expense account and the total is credited to Accounts Payable, dated the
- * bill date — so the expense lands in the period it belongs to, paid or not.
- */
-export async function createBill(input: BillInput): Promise<{ error?: string; id?: string }> {
-  const business = await requireBusiness();
+type BillDraft = {
+  billDate: Date;
+  dueDate: Date;
+  number: string | null;
+  notes: string | null;
+  total: number;
+  payableId: string;
+  items: { accountId: string; classId?: string; description: string; amount: number }[];
+};
+
+/** Validate a bill's dates and lines. Shared by entering and editing a bill. */
+async function draftBill(
+  business: { id: string; lockDate: Date | null },
+  input: BillInput
+): Promise<BillDraft | { error: string }> {
   const items = input.items.filter((i) => i.accountId && i.amount !== 0);
   if (items.length === 0) return { error: "A bill needs at least one line with an account and an amount" };
   if (items.some((i) => !Number.isSafeInteger(i.amount) || i.amount < 0)) return { error: "Line amounts must be positive" };
@@ -1454,13 +1462,56 @@ export async function createBill(input: BillInput): Promise<{ error?: string; id
   if (dueDate < billDate) return { error: "The due date can't be before the bill date" };
   const locked = lockedDateError(business.lockDate, [billDate]);
   if (locked) return { error: locked };
-
   const accounts = await prisma.account.findMany({
     where: { businessId: business.id, isArchived: false },
     select: { id: true },
   });
   const validIds = new Set(accounts.map((a) => a.id));
   if (items.some((i) => !validIds.has(i.accountId))) return { error: "Choose an account for every line" };
+  const payable = await getPayableAccount(business.id);
+  if (items.some((i) => i.accountId === payable.id)) return { error: "A bill line can't post to Accounts Payable" };
+  return {
+    billDate,
+    dueDate,
+    number: input.number?.trim() || null,
+    notes: input.notes?.trim() || null,
+    total: items.reduce((s, i) => s + i.amount, 0),
+    payableId: payable.id,
+    items: items.map((i) => ({
+      accountId: i.accountId,
+      classId: i.classId || undefined,
+      description: i.description.trim(),
+      amount: i.amount,
+    })),
+  };
+}
+
+/** The ledger lines a bill posts: each line debited, the total credited to Accounts Payable. */
+function billEntryLines(draft: BillDraft, vendorId: string) {
+  return [
+    ...draft.items.map((i) => ({
+      accountId: i.accountId,
+      classId: i.classId,
+      contactId: vendorId,
+      description: i.description || undefined,
+      debit: i.amount,
+      credit: 0,
+    })),
+    { accountId: draft.payableId, contactId: vendorId, debit: 0, credit: draft.total },
+  ];
+}
+
+const billMemo = (number: string | null, vendorName: string) => `Bill${number ? ` ${number}` : ""} — ${vendorName}`;
+
+/**
+ * Enter a vendor bill. It posts straight away: each line is debited to its
+ * expense account and the total is credited to Accounts Payable, dated the
+ * bill date — so the expense lands in the period it belongs to, paid or not.
+ */
+export async function createBill(input: BillInput): Promise<{ error?: string; id?: string }> {
+  const business = await requireBusiness();
+  const draft = await draftBill(business, input);
+  if ("error" in draft) return { error: draft.error };
 
   let vendorId = input.vendorId;
   if (vendorId) {
@@ -1476,21 +1527,7 @@ export async function createBill(input: BillInput): Promise<{ error?: string; id
   if (!vendorId) return { error: "Choose or create a vendor" };
   const vendor = await prisma.contact.findUniqueOrThrow({ where: { id: vendorId } });
 
-  const payable = await getPayableAccount(business.id);
-  if (items.some((i) => i.accountId === payable.id)) return { error: "A bill line can't post to Accounts Payable" };
-  const total = items.reduce((s, i) => s + i.amount, 0);
-  const number = input.number?.trim() || null;
-  const lines = [
-    ...items.map((i) => ({
-      accountId: i.accountId,
-      classId: i.classId || undefined,
-      contactId: vendor.id,
-      description: i.description.trim() || undefined,
-      debit: i.amount,
-      credit: 0,
-    })),
-    { accountId: payable.id, contactId: vendor.id, debit: 0, credit: total },
-  ];
+  const lines = billEntryLines(draft, vendor.id);
   const balanceError = checkBalanced(lines);
   if (balanceError) return { error: balanceError };
 
@@ -1499,27 +1536,20 @@ export async function createBill(input: BillInput): Promise<{ error?: string; id
       data: {
         businessId: business.id,
         vendorId: vendor.id,
-        number,
-        billDate,
-        dueDate,
-        notes: input.notes?.trim() || null,
-        total,
-        items: {
-          create: items.map((i) => ({
-            accountId: i.accountId,
-            classId: i.classId || undefined,
-            description: i.description.trim(),
-            amount: i.amount,
-          })),
-        },
+        number: draft.number,
+        billDate: draft.billDate,
+        dueDate: draft.dueDate,
+        notes: draft.notes,
+        total: draft.total,
+        items: { create: draft.items },
       },
     });
     const entry = await tx.journalEntry.create({
       data: {
         businessId: business.id,
-        date: billDate,
-        memo: `Bill${number ? ` ${number}` : ""} — ${vendor.name}`,
-        reference: number,
+        date: draft.billDate,
+        memo: billMemo(draft.number, vendor.name),
+        reference: draft.number,
         billId: created.id,
         lines: { create: lines },
       },
@@ -1532,6 +1562,73 @@ export async function createBill(input: BillInput): Promise<{ error?: string; id
   revalidatePath("/transactions");
   revalidatePath("/");
   return { id: bill.id };
+}
+
+/**
+ * Correct an open bill: its dates, number, notes and lines. The bill's own
+ * ledger entry is rewritten to match (and audited); payments are left alone,
+ * so the new total can't drop below what has already been paid. The vendor
+ * can't be changed — void the bill and enter it again for that.
+ */
+export async function updateBill(billId: string, input: BillInput): Promise<{ error?: string; id?: string }> {
+  const business = await requireBusiness();
+  const bill = await prisma.bill.findFirst({
+    where: { id: billId, businessId: business.id },
+    include: { vendor: true },
+  });
+  if (!bill) return { error: "Bill not found" };
+  if (bill.status !== "OPEN") return { error: "Only an open bill can be edited" };
+  const draft = await draftBill(business, input);
+  if ("error" in draft) return { error: draft.error };
+
+  // The bill's own entry is the one that credits Accounts Payable.
+  const entry = await prisma.journalEntry.findFirst({
+    where: { billId, status: "POSTED", lines: { some: { accountId: draft.payableId, credit: { gt: 0 } } } },
+    include: { lines: true },
+  });
+  if (!entry) return { error: "This bill's ledger entry is missing — void it and enter it again" };
+  if (entry.lines.some((l) => l.cleared === "RECONCILED")) return { error: RECONCILED_EDIT_MESSAGE };
+  const locked = lockedDateError(business.lockDate, [entry.date]);
+  if (locked) return { error: locked };
+  const paid = await billPaidAmount(billId, draft.payableId);
+  if (draft.total < paid) return { error: "The total can't be less than what has already been paid on this bill" };
+
+  const lines = billEntryLines(draft, bill.vendorId);
+  const balanceError = checkBalanced(lines);
+  if (balanceError) return { error: balanceError };
+
+  await prisma.$transaction(async (tx) => {
+    await tx.billItem.deleteMany({ where: { billId } });
+    await tx.bill.update({
+      where: { id: billId },
+      data: {
+        number: draft.number,
+        billDate: draft.billDate,
+        dueDate: draft.dueDate,
+        notes: draft.notes,
+        total: draft.total,
+        status: paid > 0 && paid >= draft.total ? "PAID" : "OPEN",
+        items: { create: draft.items },
+      },
+    });
+    await tx.journalLine.deleteMany({ where: { entryId: entry.id } });
+    const updated = await tx.journalEntry.update({
+      where: { id: entry.id },
+      data: {
+        date: draft.billDate,
+        memo: billMemo(draft.number, bill.vendor.name),
+        reference: draft.number,
+        lines: { create: lines },
+      },
+      include: ENTRY_AUDIT_INCLUDE,
+    });
+    await recordEntryAudit("UPDATED", updated, tx);
+  });
+  revalidatePath(`/bills/${billId}`);
+  revalidatePath("/bills");
+  revalidatePath("/transactions");
+  revalidatePath("/");
+  return { id: billId };
 }
 
 /** Pay all or part of a bill from a bank (or card) account. */

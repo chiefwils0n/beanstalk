@@ -41,6 +41,8 @@ const CASH_NAME = /\b(cash|bank|checking|savings|money market|undeposited)\b/i;
 const NOT_CASH_NAME = /receivable|payable/i;
 const FIXED_NAME =
   /equipment|vehicle|building|land\b|property|furniture|improvement|depreciation|fixed asset|investment|machinery|real estate/i;
+// Book entries that never move cash (the indirect method adds them back to net income).
+const NON_CASH_NAME = /depreciation|amortization|appreciation|unrealized|revaluation/i;
 const DEBT_NAME = /loan|mortgage|note payable|notes payable|line of credit|heloc/i;
 
 function isSection(value: string | null): value is CashFlowSection {
@@ -76,7 +78,9 @@ export function classifyAccounts(
       continue;
     }
     let section: CashFlowSection = "OPERATING";
-    if (account.type === "EQUITY") {
+    if (line.some((a) => NON_CASH_NAME.test(a.name))) {
+      section = "OPERATING";
+    } else if (account.type === "EQUITY") {
       section = "FINANCING";
     } else if (account.type === "LIABILITY") {
       const debt = line.some((a) => hints.loanLiabilityIds?.has(a.id) || DEBT_NAME.test(a.name));

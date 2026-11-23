@@ -21,6 +21,7 @@ export default async function PayablesAgeingPage({
       docs={docs}
       docHref={(id) => `/bills/${id}`}
       contactLabel="Vendor / bill"
+      exportReport="payables-ageing"
       emptyText="No unpaid bills on this date."
     />
   );

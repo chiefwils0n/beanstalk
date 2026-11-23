@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Daily automatic backup on macOS. Copy to ~/Library/LaunchAgents/com.beanstalk.backup.plist,
+  replace /PATH/TO/beanstalk and /Users/YOU, then:
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.beanstalk.backup.plist
+  Runs at 12:30 every day (or when the Mac next wakes) and once when loaded.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.beanstalk.backup</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>/PATH/TO/beanstalk/scripts/backup.sh</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>BACKUP_DIR</key><string>/Users/YOU/beanstalk-backups</string>
+    <!-- Optional: a synced folder or external drive for an off-machine copy -->
+    <!-- <key>BACKUP_MIRROR_DIR</key><string>/Volumes/Backup/beanstalk</string> -->
+  </dict>
+  <key>StartCalendarInterval</key>
+  <dict><key>Hour</key><integer>12</integer><key>Minute</key><integer>30</integer></dict>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>/Users/YOU/beanstalk-backups/backup.log</string>
+  <key>StandardErrorPath</key><string>/Users/YOU/beanstalk-backups/backup.log</string>
+</dict>
+</plist>

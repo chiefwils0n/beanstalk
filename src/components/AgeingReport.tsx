@@ -13,6 +13,7 @@ export function AgeingReport({
   docHref,
   contactLabel,
   emptyText,
+  exportReport,
 }: {
   title: string;
   businessName: string;
@@ -22,20 +23,27 @@ export function AgeingReport({
   docHref: (id: string) => string;
   contactLabel: string;
   emptyText: string;
+  /** Report key for the CSV export route. */
+  exportReport: string;
 }) {
   const report = buildAgeing(docs, asOf);
   const money = (cents: number) => (cents ? formatMoney(cents) : "");
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <Link href="/reports" className="text-sm text-emerald-600 hover:underline">
-          ← Reports
-        </Link>
-        <h1 className="page-title mt-1">{title}</h1>
-        <p className="text-sm text-zinc-500">
-          {businessName} · as of {formatDate(asOf)}
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <Link href="/reports" className="text-sm text-emerald-600 hover:underline">
+            ← Reports
+          </Link>
+          <h1 className="page-title mt-1">{title}</h1>
+          <p className="text-sm text-zinc-500">
+            {businessName} · as of {formatDate(asOf)}
+          </p>
+        </div>
+        <a className="btn btn-sm" href={`/api/export?report=${exportReport}&asOf=${toDateInput(asOf)}`}>
+          Export CSV
+        </a>
       </div>
 
       <form className="card flex flex-wrap items-end gap-3" method="GET">

@@ -91,6 +91,22 @@ bookkeeping is never disturbed by building new features:
 3. Rebuild and restart production: `npm run start:prod`.
 4. Re-clone the sandbox so dev mirrors live data again: `npm run sandbox:refresh`.
 
+## Automatic backups
+
+`npm run backup` writes a consistent, integrity-checked snapshot of the live database to
+`~/beanstalk-backups/beanstalk-YYYY-MM-DD.db` and keeps the newest 30. It is safe to run while
+the app is running. Settings → Backup shows when the last snapshot was taken.
+
+- `BACKUP_DIR` — where snapshots go.
+- `BACKUP_MIRROR_DIR` — an optional second copy (a synced folder or external drive), so a
+  snapshot also exists off this machine. Finished snapshots are safe to sync; the live
+  database is not.
+- `BACKUP_KEEP` — how many daily snapshots to keep (default 30).
+
+To run it every day on macOS, install the launchd job in
+`scripts/com.beanstalk.backup.plist.example` (instructions are in the file). On Linux, a cron
+line does the same: `30 12 * * * cd /path/to/beanstalk && npm run backup`.
+
 ## Google Drive setup (optional)
 
 1. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials), create an

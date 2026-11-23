@@ -91,6 +91,21 @@ describe("cash flow", () => {
     expect(sections.get("deposit")).toBe("FINANCING");
   });
 
+  it("treats depreciation and unrealized gains as operating adjustments", () => {
+    const s = classifyAccounts([
+      acct("b", "Buildings", "ASSET"),
+      acct("cost", "Original cost", "ASSET", "b"),
+      acct("dep", "Depreciation", "ASSET", "b"),
+      acct("app", "Appreciation", "ASSET", "b"),
+      acct("ug", "Unrealized Gain/Loss", "EQUITY"),
+      acct("ugc", "2305 Jake", "EQUITY", "ug"),
+    ]);
+    expect(s.get("cost")).toBe("INVESTING");
+    expect(s.get("dep")).toBe("OPERATING");
+    expect(s.get("app")).toBe("OPERATING");
+    expect(s.get("ugc")).toBe("OPERATING");
+  });
+
   it("never treats a non-asset as cash", () => {
     const s = classifyAccounts([acct("p", "Parent", "LIABILITY", null, "CASH")]);
     expect(s.get("p")).toBe("OPERATING");

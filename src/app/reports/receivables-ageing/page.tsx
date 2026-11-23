@@ -21,6 +21,7 @@ export default async function ReceivablesAgeingPage({
       docs={docs}
       docHref={(id) => `/invoices/${id}`}
       contactLabel="Customer / invoice"
+      exportReport="receivables-ageing"
       emptyText="No unpaid invoices on this date."
     />
   );

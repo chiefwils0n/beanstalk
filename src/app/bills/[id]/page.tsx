@@ -43,14 +43,19 @@ export default async function BillPage({ params }: { params: Promise<{ id: strin
 
   // Pay from a bank account or a credit card. Header accounts (those with
   // sub-accounts) are left out so the default is a real account.
-  const { accounts, sections } = await cashFlowSections(business.id);
+  const { accounts, sections, reconciledIds } = await cashFlowSections(business.id);
   const active = accounts.filter((a) => !a.isArchived);
   const parents = new Set(active.map((a) => a.parentId).filter(Boolean));
   const byId = new Map(active.map((a) => [a.id, a]));
   const payFrom = flattenAccounts(active).filter((option) => {
     const account = byId.get(option.id);
     if (!account || account.id === payable?.id || parents.has(account.id)) return false;
-    return sections.get(account.id) === "CASH" || (account.type === "LIABILITY" && /card|credit/i.test(account.name));
+    return (
+      sections.get(account.id) === "CASH" ||
+      (account.type === "LIABILITY" &&
+        (/card|credit|amex|visa|mastercard|discover/i.test(account.name) ||
+          (reconciledIds.has(account.id) && sections.get(account.id) === "OPERATING")))
+    );
   });
   const cashFirst = [
     ...payFrom.filter((a) => sections.get(a.id) === "CASH"),
@@ -81,6 +86,11 @@ export default async function BillPage({ params }: { params: Promise<{ id: strin
         </div>
         <div className="flex items-center gap-2">
           {lockDate && <ClosedPeriodNote lockDate={lockDate} />}
+          {!lockDate && bill.status === "OPEN" && (
+            <Link href={`/bills/${bill.id}/edit`} className="btn btn-sm">
+              Edit
+            </Link>
+          )}
           {!lockDate && bill.status !== "VOID" && (
             <form action={voidBill}>
               <input type="hidden" name="id" value={bill.id} />

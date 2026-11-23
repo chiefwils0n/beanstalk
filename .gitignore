@@ -42,6 +42,9 @@ prisma/*.db-wal
 prisma/*.db-shm
 /ci.db
 
+# automatic backup snapshots mirrored into the synced folder
+prisma/backups/
+
 # file-sync metadata (Resilio/etc.) — must never land in the public repo
 prisma/.sync/
 

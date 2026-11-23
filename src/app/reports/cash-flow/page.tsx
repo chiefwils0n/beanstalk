@@ -62,15 +62,23 @@ export default async function CashFlowPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <Link href="/reports" className="text-sm text-emerald-600 hover:underline">
-          ← Reports
-        </Link>
-        <h1 className="page-title mt-1">Cash Flow Statement</h1>
-        <p className="text-sm text-zinc-500">
-          {business.name} · {from ? `${formatDate(from)} – ` : "through "}
-          {formatDate(to)}
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <Link href="/reports" className="text-sm text-emerald-600 hover:underline">
+            ← Reports
+          </Link>
+          <h1 className="page-title mt-1">Cash Flow Statement</h1>
+          <p className="text-sm text-zinc-500">
+            {business.name} · {from ? `${formatDate(from)} – ` : "through "}
+            {formatDate(to)}
+          </p>
+        </div>
+        <a
+          className="btn btn-sm"
+          href={`/api/export?report=cash-flow${from ? `&from=${toDateInput(from)}` : ""}&to=${toDateInput(to)}`}
+        >
+          Export CSV
+        </a>
       </div>
 
       <form className="card flex flex-wrap items-end gap-3" method="GET">
@@ -150,7 +158,8 @@ export default async function CashFlowPage({
         Cash accounts:{" "}
         {report.cashAccounts.length > 0 ? report.cashAccounts.map((a) => a.name).join(", ") : "none"}. Other
         accounts are sorted into operating, investing or financing from their type and name — loans
-        and equity are financing, equipment and property are investing. To change where an account
+        and equity are financing, equipment and property are investing, and book entries that move
+        no cash (depreciation, unrealized gains) are operating adjustments. To change where an account
         appears, edit it in the Chart of Accounts. A positive amount is cash coming in.
       </p>
     </div>

@@ -13,6 +13,17 @@ import {
 } from "../../../lib/accounting";
 import { parseDate, toDateInput, todayUTC } from "../../../lib/money";
 import { contactWithDescendants } from "../../../lib/contacts";
+import {
+  budgetVsActual,
+  cashFlowStatement,
+  openBills,
+  openInvoices,
+  vendorPaymentTotals,
+} from "../../../lib/reports";
+import { AGEING_BUCKETS, AGEING_LABELS, buildAgeing } from "../../../lib/ageing";
+import { monthsBetween, parseYearMonth, type BudgetRow } from "../../../lib/budget";
+import { default1099Threshold } from "../../../lib/vendorPayments";
+import type { CashFlowRow } from "../../../lib/cashFlow";
 
 function csvEscape(value: string): string {
   return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
@@ -44,8 +55,10 @@ export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
   const report = params.get("report");
   const today = todayUTC();
-  const from = params.get("from") ? parseDate(params.get("from")!) : undefined;
-  const to = params.get("to") ? parseDate(params.get("to")!) : today;
+  // Budget vs. actual passes months (yyyy-mm) in from/to, not dates.
+  const monthly = report === "budget-vs-actual";
+  const from = !monthly && params.get("from") ? parseDate(params.get("from")!) : undefined;
+  const to = !monthly && params.get("to") ? parseDate(params.get("to")!) : today;
   const fromLabel = from ? toDateInput(from) : "all-time";
   const classId = params.get("class") || undefined;
 
@@ -194,6 +207,124 @@ export async function GET(request: NextRequest) {
         ]),
         ["Total expenses", data.totalExpenses],
         ["Net profit", data.netProfit],
+      ];
+      break;
+    }
+    case "cash-flow": {
+      const data = await cashFlowStatement(business.id, from, to);
+      const lines = (list: CashFlowRow[]) =>
+        list.map((r): (string | number)[] => [`  ${r.code ? r.code + " " : ""}${r.name}`, r.amount]);
+      filename = `cash-flow_${fromLabel}_${toDateInput(to)}.csv`;
+      rows = [
+        [`Cash Flow Statement — ${business.name}`, ""],
+        [`${fromLabel} to ${toDateInput(to)}`, ""],
+        ["Operating activities", ""],
+        ["  Net income", data.netIncome],
+        ...lines(data.adjustments),
+        ["Cash from operating activities", data.operating],
+        ["Investing activities", ""],
+        ...lines(data.investingRows),
+        ["Cash from investing activities", data.investing],
+        ["Financing activities", ""],
+        ...lines(data.financingRows),
+        ["Cash from financing activities", data.financing],
+        ["Net change in cash", data.netChange],
+        ["Cash at start of period", data.cashStart],
+        ["Cash at end of period", data.cashEnd],
+      ];
+      break;
+    }
+    case "receivables-ageing":
+    case "payables-ageing": {
+      const receivables = report === "receivables-ageing";
+      const asOf = params.get("asOf") ? parseDate(params.get("asOf")!) : today;
+      const docs = receivables ? await openInvoices(business.id, asOf) : await openBills(business.id, asOf);
+      const data = buildAgeing(docs, asOf);
+      filename = `${report}_${toDateInput(asOf)}.csv`;
+      rows = [
+        [`${receivables ? "Receivables" : "Payables"} Ageing — ${business.name}`],
+        [`As of ${toDateInput(asOf)}`],
+        [
+          receivables ? "Customer" : "Vendor",
+          receivables ? "Invoice" : "Bill",
+          "Date",
+          "Due",
+          "Days late",
+          ...AGEING_BUCKETS.map((b) => AGEING_LABELS[b]),
+          "Total",
+        ],
+        ...data.groups.flatMap((group) =>
+          group.docs.map((doc): (string | number)[] => [
+            group.contactName,
+            doc.label,
+            toDateInput(doc.date),
+            toDateInput(doc.dueDate),
+            String(doc.daysPastDue),
+            ...AGEING_BUCKETS.map((b) => (doc.bucket === b ? doc.open : "")),
+            doc.open,
+          ])
+        ),
+        ["Total", "", "", "", "", ...AGEING_BUCKETS.map((b) => data.totals[b]), data.total],
+      ];
+      break;
+    }
+    case "vendor-payments": {
+      const year = Number(params.get("year") ?? today.getUTCFullYear());
+      const thresholdParam = Number(params.get("threshold"));
+      const threshold =
+        Number.isFinite(thresholdParam) && thresholdParam > 0
+          ? Math.round(thresholdParam * 100)
+          : default1099Threshold(year);
+      const type = params.get("type") || "";
+      const data = await vendorPaymentTotals(business.id, year);
+      filename = `vendor-payments_${year}.csv`;
+      rows = [
+        [`1099 Vendor Payments ${year} — ${business.name}`],
+        ["Contact", "Type", "Address", "City", "State", "Zip", "Email", `Paid in ${year}`, "At or over threshold"],
+        ...data.rows
+          .filter((r) => !type || (r.typeName ?? "No type") === type)
+          .map((r): (string | number)[] => [
+            r.contact.name,
+            r.typeName ?? "",
+            r.contact.address ?? "",
+            r.contact.city ?? "",
+            r.contact.state ?? "",
+            r.contact.zip ?? "",
+            r.contact.email ?? "",
+            r.paid,
+            r.paid >= threshold ? "Yes" : "No",
+          ]),
+      ];
+      break;
+    }
+    case "budget-vs-actual": {
+      const toMonth = parseYearMonth(params.get("to") ?? undefined) ?? {
+        year: today.getUTCFullYear(),
+        month: today.getUTCMonth() + 1,
+      };
+      const fromMonth = parseYearMonth(params.get("from") ?? undefined) ?? { year: toMonth.year, month: 1 };
+      const data = await budgetVsActual(business.id, monthsBetween(fromMonth, toMonth));
+      if (!data) return NextResponse.json({ error: "Invalid month range" }, { status: 400 });
+      const line = (label: string, r: BudgetRow): (string | number)[] => [
+        label,
+        r.actual,
+        r.budget,
+        r.variance,
+        r.percent === null ? "" : `${r.percent}%`,
+      ];
+      const accountLine = (r: BudgetRow) => line(`  ${r.account.code ? r.account.code + " " : ""}${r.account.name}`, r);
+      filename = `budget-vs-actual_${toDateInput(data.from)}_${toDateInput(data.to)}.csv`;
+      rows = [
+        [`Budget vs. Actual — ${business.name}`],
+        [`${toDateInput(data.from)} to ${toDateInput(data.to)}`],
+        ["Account", "Actual", "Budget", "Over / (under)", "% of budget"],
+        ["Income"],
+        ...data.income.map(accountLine),
+        line("Total income", data.totalIncome),
+        ["Expenses"],
+        ...data.expenses.map(accountLine),
+        line("Total expenses", data.totalExpenses),
+        line("Net income", data.net),
       ];
       break;
     }

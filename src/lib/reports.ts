@@ -82,7 +82,7 @@ export async function cashFlowSections(businessId: string) {
     cashIds,
     loanLiabilityIds: new Set(loans.map((l) => l.liabilityAccountId)),
   });
-  return { accounts, sections };
+  return { accounts, sections, reconciledIds: new Set(reconciled.map((r) => r.accountId)) };
 }
 
 export async function cashAccountIds(businessId: string): Promise<Set<string>> {

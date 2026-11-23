@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createBill } from "../lib/actions";
+import { createBill, updateBill } from "../lib/actions";
 import { parseMoney, formatMoney } from "../lib/money";
 
 type ItemState = { accountId: string; classId: string; description: string; amount: string };
@@ -23,12 +23,15 @@ export function BillForm({
   classes,
   defaultBillDate,
   defaultDueDate,
+  edit,
 }: {
   vendors: { id: string; name: string }[];
   accounts: { id: string; label: string }[];
   classes: { id: string; name: string }[];
   defaultBillDate: string;
   defaultDueDate: string;
+  /** Editing an existing bill: its id, vendor name and current values. */
+  edit?: { billId: string; vendorName: string; number: string; notes: string; items: ItemState[] };
 }) {
   const hasClasses = classes.length > 0;
   const router = useRouter();
@@ -36,11 +39,11 @@ export function BillForm({
   const [error, setError] = useState<string | null>(null);
   const [vendorId, setVendorId] = useState(vendors[0]?.id ?? "");
   const [newVendorName, setNewVendorName] = useState("");
-  const [number, setNumber] = useState("");
+  const [number, setNumber] = useState(edit?.number ?? "");
   const [billDate, setBillDate] = useState(defaultBillDate);
   const [dueDate, setDueDate] = useState(defaultDueDate);
-  const [notes, setNotes] = useState("");
-  const [items, setItems] = useState<ItemState[]>([emptyItem()]);
+  const [notes, setNotes] = useState(edit?.notes ?? "");
+  const [items, setItems] = useState<ItemState[]>(edit?.items.length ? edit.items : [emptyItem()]);
 
   const setItem = (i: number, patch: Partial<ItemState>) =>
     setItems((prev) => prev.map((it, idx) => (idx === i ? { ...it, ...patch } : it)));
@@ -50,7 +53,7 @@ export function BillForm({
   const submit = () => {
     setError(null);
     startTransition(async () => {
-      const result = await createBill({
+      const payload = {
         vendorId: vendorId || undefined,
         newVendorName: vendorId ? undefined : newVendorName,
         number,
@@ -63,7 +66,8 @@ export function BillForm({
           description: it.description,
           amount: cents(it.amount),
         })),
-      });
+      };
+      const result = edit ? await updateBill(edit.billId, payload) : await createBill(payload);
       if (result.error) {
         setError(result.error);
         return;
@@ -78,15 +82,19 @@ export function BillForm({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
           <label className="label">Vendor</label>
-          <select className="input" value={vendorId} onChange={(e) => setVendorId(e.target.value)}>
-            {vendors.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.name}
-              </option>
-            ))}
-            <option value="">+ New vendor…</option>
-          </select>
-          {!vendorId && (
+          {edit ? (
+            <p className="input bg-zinc-50 text-zinc-500 dark:bg-zinc-900">{edit.vendorName}</p>
+          ) : (
+            <select className="input" value={vendorId} onChange={(e) => setVendorId(e.target.value)}>
+              {vendors.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.name}
+                </option>
+              ))}
+              <option value="">+ New vendor…</option>
+            </select>
+          )}
+          {!edit && !vendorId && (
             <input
               className="input mt-2"
               placeholder="New vendor name"
@@ -210,9 +218,13 @@ export function BillForm({
 
       <div className="flex items-center gap-3">
         <button className="btn btn-primary" disabled={pending} onClick={submit}>
-          {pending ? "Saving…" : "Save bill"}
+          {pending ? "Saving…" : edit ? "Save changes" : "Save bill"}
         </button>
-        <span className="text-sm text-zinc-500">Posts the expense to Accounts Payable on the bill date.</span>
+        <span className="text-sm text-zinc-500">
+          {edit
+            ? "Rewrites this bill's ledger entry. Payments already recorded are not changed."
+            : "Posts the expense to Accounts Payable on the bill date."}
+        </span>
         {error && <span className="text-sm text-red-600 dark:text-red-400">{error}</span>}
       </div>
     </div>

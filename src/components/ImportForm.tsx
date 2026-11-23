@@ -530,15 +530,17 @@ export function ImportForm({
                 )}
               </div>
               <div className="overflow-x-auto">
-                <table className="w-full">
+                {/* A floor on the width: below it the table scrolls sideways
+                    rather than crushing the description and category columns. */}
+                <table className="w-full min-w-[60rem]">
                   <thead>
                     <tr>
                       <th className="th w-8" />
                       <th className="th">Date</th>
-                      <th className="th">Description</th>
+                      <th className="th min-w-[14rem]">Description</th>
                       <th className="th text-right">Money in</th>
                       <th className="th text-right">Money out</th>
-                      <th className="th w-[32%]">Category</th>
+                      <th className="th w-[32%] min-w-[19rem]">Category</th>
                       <th className="th">Status</th>
                     </tr>
                   </thead>
@@ -619,7 +621,7 @@ export function ImportForm({
                               {splits.map((split, si) => (
                                 <div key={si} className="flex items-center gap-1">
                                   <select
-                                    className="input"
+                                    className="input min-w-0 flex-1"
                                     aria-label={`Category ${si + 1} for row ${row.line}`}
                                     value={split.categoryId}
                                     onChange={(e) =>
