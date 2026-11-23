@@ -11,6 +11,8 @@ import { parseDate, parseMoney, toDateInput } from "./money";
 import { postOccurrence, runDueRecurring, advanceDate } from "./recurring";
 import { standardPayment, monthlyRate } from "./loans";
 import { checkBalanced } from "./ledger";
+import { entryLinesForRow, matchExistingLines, MAX_IMPORT_ROWS, MATCH_TOLERANCE_DAYS } from "./csvImport";
+import type { Prisma } from "@prisma/client";
 
 function str(formData: FormData, key: string): string {
   return String(formData.get(key) ?? "").trim();
@@ -283,7 +285,11 @@ type EntryForAudit = {
 };
 
 /** Append an immutable audit record for a change to a journal entry. */
-async function recordEntryAudit(action: string, entry: EntryForAudit) {
+async function recordEntryAudit(
+  action: string,
+  entry: EntryForAudit,
+  db: Prisma.TransactionClient = prisma
+) {
   const amount = entry.lines.reduce((s, l) => s + l.debit, 0);
   const detail = JSON.stringify({
     date: toDateInput(entry.date),
@@ -298,7 +304,7 @@ async function recordEntryAudit(action: string, entry: EntryForAudit) {
       description: l.description ?? null,
     })),
   });
-  await prisma.auditEvent.create({
+  await db.auditEvent.create({
     data: { businessId: entry.businessId, entryId: entry.id, action, memo: entry.memo, amount, detail },
   });
 }
@@ -394,6 +400,159 @@ export async function deleteEntry(formData: FormData) {
   revalidatePath("/transactions");
   revalidatePath("/");
   redirect("/transactions");
+}
+
+// ----------------------------------------------------------------- CSV import
+
+export type ImportPreviewRow = { date: string; amount: number; description: string };
+export type ImportPreview = {
+  /** Per row: the existing entry that already records it, if any. */
+  matches: ({ entryId: string; date: string; memo: string } | null)[];
+  /** Per row: the category last used for the same description on this account. */
+  suggestions: (string | null)[];
+};
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Read-only look at the ledger for a parsed CSV: which rows are already in the
+ * books (so importing them would double-count) and a suggested category for
+ * the rest, taken from how the same description was categorized before.
+ */
+export async function previewImport(
+  accountId: string,
+  rows: ImportPreviewRow[]
+): Promise<ImportPreview | { error: string }> {
+  const business = await requireBusiness();
+  if (rows.length > MAX_IMPORT_ROWS) return { error: `Too many rows — import at most ${MAX_IMPORT_ROWS} at a time` };
+  if (rows.some((r) => !ISO_DATE.test(r.date) || !Number.isSafeInteger(r.amount))) return { error: "Invalid row data" };
+  const account = await prisma.account.findFirst({ where: { id: accountId, businessId: business.id } });
+  if (!account) return { error: "Account not found" };
+  if (rows.length === 0) return { matches: [], suggestions: [] };
+
+  const dates = rows.map((r) => r.date).sort();
+  const pad = MATCH_TOLERANCE_DAYS * 86400000;
+  const existing = await prisma.journalLine.findMany({
+    where: {
+      accountId,
+      entry: {
+        businessId: business.id,
+        status: "POSTED",
+        date: {
+          gte: new Date(parseDate(dates[0]).getTime() - pad),
+          lte: new Date(parseDate(dates[dates.length - 1]).getTime() + pad),
+        },
+      },
+    },
+    select: { id: true, debit: true, credit: true, entry: { select: { id: true, date: true, memo: true } } },
+  });
+  const matched = matchExistingLines(
+    rows,
+    existing.map((l) => ({ id: l.id, date: toDateInput(l.entry.date), debit: l.debit, credit: l.credit }))
+  );
+  const lineById = new Map(existing.map((l) => [l.id, l]));
+  const matches = rows.map((_, i) => {
+    const line = lineById.get(matched.get(i) ?? "");
+    return line ? { entryId: line.entry.id, date: toDateInput(line.entry.date), memo: line.entry.memo } : null;
+  });
+
+  // Category memory: the other side of the most recent simple (two-line)
+  // entry on this account with the same memo.
+  const memos = [...new Set(rows.map((r) => r.description).filter(Boolean))];
+  const history = await prisma.journalEntry.findMany({
+    where: { businessId: business.id, status: "POSTED", memo: { in: memos }, lines: { some: { accountId } } },
+    orderBy: [{ date: "desc" }, { createdAt: "desc" }],
+    select: { memo: true, lines: { select: { accountId: true, account: { select: { isArchived: true } } } } },
+  });
+  const categoryByMemo = new Map<string, string>();
+  for (const entry of history) {
+    if (categoryByMemo.has(entry.memo) || entry.lines.length !== 2) continue;
+    const other = entry.lines.find((l) => l.accountId !== accountId);
+    if (other && !other.account.isArchived) categoryByMemo.set(entry.memo, other.accountId);
+  }
+  const suggestions = rows.map((r) => categoryByMemo.get(r.description) ?? null);
+  return { matches, suggestions };
+}
+
+export type ImportRowInput = {
+  date: string; // yyyy-mm-dd
+  memo: string;
+  reference?: string;
+  amount: number; // signed cents; positive = money into the account
+  categoryAccountId: string;
+};
+
+/**
+ * Post each CSV row as a two-line journal entry between the imported account
+ * and its category. All-or-nothing: any invalid row aborts the whole import.
+ */
+export async function importTransactions(input: {
+  accountId: string;
+  rows: ImportRowInput[];
+}): Promise<{ error?: string; imported?: number }> {
+  const business = await requireBusiness();
+  const { accountId, rows } = input;
+  if (rows.length === 0) return { error: "Nothing to import" };
+  if (rows.length > MAX_IMPORT_ROWS) return { error: `Too many rows — import at most ${MAX_IMPORT_ROWS} at a time` };
+
+  const accounts = await prisma.account.findMany({
+    where: { businessId: business.id, isArchived: false },
+    select: { id: true },
+  });
+  const validIds = new Set(accounts.map((a) => a.id));
+  if (!validIds.has(accountId)) return { error: "Account not found" };
+
+  const entries: { date: Date; memo: string; reference: string | null; lines: EntryLineInput[] }[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    const label = `Row ${i + 1}${row.memo ? ` (${row.memo.slice(0, 40)})` : ""}`;
+    if (!ISO_DATE.test(row.date)) return { error: `${label}: invalid date` };
+    let date: Date;
+    try {
+      date = parseDate(row.date);
+    } catch {
+      return { error: `${label}: invalid date` };
+    }
+    if (!validIds.has(row.categoryAccountId)) return { error: `${label}: choose a category account` };
+    const built = entryLinesForRow(row.amount, accountId, row.categoryAccountId);
+    if ("error" in built) return { error: `${label}: ${built.error}` };
+    const checked = validateEntry({
+      date: row.date,
+      memo: row.memo,
+      reference: row.reference,
+      tagIds: [],
+      lines: built.lines,
+    });
+    if ("error" in checked) return { error: `${label}: ${checked.error}` };
+    entries.push({
+      date,
+      memo: row.memo.trim(),
+      reference: row.reference?.trim() || null,
+      lines: checked.lines,
+    });
+  }
+
+  await prisma.$transaction(
+    async (tx) => {
+      for (const entry of entries) {
+        const created = await tx.journalEntry.create({
+          data: {
+            businessId: business.id,
+            date: entry.date,
+            memo: entry.memo,
+            reference: entry.reference,
+            lines: { create: entry.lines },
+          },
+          include: ENTRY_AUDIT_INCLUDE,
+        });
+        await recordEntryAudit("CREATED", created, tx);
+      }
+    },
+    { timeout: 120000 }
+  );
+  revalidatePath("/transactions");
+  revalidatePath("/");
+  return { imported: entries.length };
 }
 
 // ------------------------------------------------------------------ contacts

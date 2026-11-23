@@ -150,9 +150,14 @@ export default async function TransactionsPage({
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <h1 className="page-title">Transactions</h1>
-        <Link href="/transactions/new" className="btn btn-primary">
-          + New transaction
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link href="/transactions/import" className="btn">
+            Import CSV
+          </Link>
+          <Link href="/transactions/new" className="btn btn-primary">
+            + New transaction
+          </Link>
+        </div>
       </div>
 
       <form className="card flex flex-wrap items-end gap-3" action={applyTransactionFilter}>
