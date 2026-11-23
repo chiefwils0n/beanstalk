@@ -28,6 +28,31 @@ const REPORTS = [
     description: "Every posted line, filterable by account and date.",
   },
   {
+    href: "/reports/cash-flow",
+    title: "Cash Flow Statement",
+    description: "Where cash came from and went: operating, investing, and financing.",
+  },
+  {
+    href: "/reports/receivables-ageing",
+    title: "Receivables Ageing",
+    description: "Unpaid invoices by customer and how overdue they are.",
+  },
+  {
+    href: "/reports/payables-ageing",
+    title: "Payables Ageing",
+    description: "Unpaid bills by vendor and how overdue they are.",
+  },
+  {
+    href: "/reports/budget-vs-actual",
+    title: "Budget vs. Actual",
+    description: "Income and expenses against the monthly budget you set.",
+  },
+  {
+    href: "/reports/vendor-payments",
+    title: "1099 Vendor Payments",
+    description: "Cash paid to each vendor for the year, flagged at the 1099 threshold.",
+  },
+  {
     href: "/reports/tax-summary",
     title: "Tax Summary",
     description: "Income and deductible expenses grouped by tax line for your accountant.",

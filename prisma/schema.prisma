@@ -14,6 +14,9 @@ model Business {
   taxId           String?
   fiscalYearStart Int      @default(1) // month 1-12
   driveFolderId   String?
+  // Books are closed through this date: nothing dated on or before it can be
+  // posted, edited, voided or deleted.
+  lockDate        DateTime?
   createdAt       DateTime @default(now())
 
   accounts     Account[]
@@ -29,6 +32,8 @@ model Business {
   reconciliations Reconciliation[]
   auditEvents     AuditEvent[]
   importRules     ImportRule[]
+  bills           Bill[]
+  budgets         Budget[]
 }
 
 // An immutable record of a change to a journal entry (created / updated /
@@ -118,6 +123,7 @@ model Class {
   lines          JournalLine[]
   recurringLines RecurringLine[]
   invoiceItems   InvoiceItem[]
+  billItems      BillItem[]
 
   @@unique([businessId, name])
 }
@@ -135,6 +141,9 @@ model Account {
   parentId    String?
   // JSON SavedMapping: the CSV column layout last imported into this account.
   importMapping String?
+  // Where the account sits on the cash flow statement:
+  // CASH | OPERATING | INVESTING | FINANCING. Null = worked out automatically.
+  cashFlow      String?
 
   business Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
   parent   Account?      @relation("AccountChildren", fields: [parentId], references: [id])
@@ -147,6 +156,8 @@ model Account {
   loansAsPayment   Loan[] @relation("LoanPaymentAccount")
   reconciliations  Reconciliation[]
   importRules      ImportRule[]
+  billItems        BillItem[]
+  budgets          Budget[]
 
   @@index([businessId, type])
 }
@@ -161,11 +172,13 @@ model JournalEntry {
   status      String   @default("POSTED")
   invoiceId   String?
   recurringId String?
+  billId      String?
   createdAt   DateTime @default(now())
 
   business    Business              @relation(fields: [businessId], references: [id], onDelete: Cascade)
   invoice     Invoice?              @relation(fields: [invoiceId], references: [id])
   recurring   RecurringTransaction? @relation(fields: [recurringId], references: [id])
+  bill        Bill?                 @relation(fields: [billId], references: [id], onDelete: SetNull)
   lines       JournalLine[]
   tags        EntryTag[]
   documents   Document[]
@@ -280,6 +293,7 @@ model Contact {
   lines          JournalLine[]
   recurringLines RecurringLine[]
   loans          Loan[]
+  bills          Bill[]
 
   @@index([businessId, typeId])
 }
@@ -319,6 +333,58 @@ model InvoiceItem {
   invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   account Account @relation(fields: [accountId], references: [id])
   class   Class?  @relation(fields: [classId], references: [id], onDelete: SetNull)
+}
+
+// A vendor bill (accounts payable). Saving one posts the expense against
+// Accounts Payable on the bill date; payments then clear the payable.
+// status: OPEN | PAID | VOID
+model Bill {
+  id         String   @id @default(cuid())
+  businessId String
+  vendorId   String
+  number     String? // the vendor's own bill / invoice number
+  billDate   DateTime
+  dueDate    DateTime
+  status     String   @default("OPEN")
+  notes      String?
+  total      Int      @default(0) // cents
+  createdAt  DateTime @default(now())
+
+  business Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  vendor   Contact        @relation(fields: [vendorId], references: [id])
+  items    BillItem[]
+  entries  JournalEntry[]
+
+  @@index([businessId, status])
+}
+
+model BillItem {
+  id          String  @id @default(cuid())
+  billId      String
+  accountId   String // expense (or asset) account
+  classId     String?
+  description String
+  amount      Int     @default(0) // cents
+
+  bill    Bill    @relation(fields: [billId], references: [id], onDelete: Cascade)
+  account Account @relation(fields: [accountId], references: [id])
+  class   Class?  @relation(fields: [classId], references: [id], onDelete: SetNull)
+}
+
+// One month's budget for an income or expense account.
+model Budget {
+  id         String @id @default(cuid())
+  businessId String
+  accountId  String
+  year       Int
+  month      Int // 1-12
+  amount     Int    @default(0) // cents
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  account  Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, year, month])
+  @@index([businessId, year])
 }
 
 // frequency: DAILY | WEEKLY | MONTHLY | YEARLY

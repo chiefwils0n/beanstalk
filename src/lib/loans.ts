@@ -195,3 +195,28 @@ export function nextPaymentSplit(balance: number, annualRatePct: number, payment
   const principal = Math.min(Math.max(payment - interest, 0), balance);
   return { interest, principal, total: principal >= balance ? balance + interest : payment };
 }
+
+export type LoanAccounts = { id: string; liabilityAccountId: string; interestAccountId: string };
+
+/**
+ * Recognise a loan payment in a set of entry lines (e.g. an imported bank row
+ * split into principal and interest): a net debit to exactly one loan's
+ * liability account. Returns the principal and interest paid, or null when the
+ * lines don't pay down a loan — or when it is ambiguous which loan they pay
+ * (two loans sharing a liability account, or two loans paid in one entry).
+ */
+export function loanPaymentFromLines(
+  lines: { accountId: string; debit: number; credit: number }[],
+  loans: LoanAccounts[]
+): { loanId: string; principal: number; interest: number } | null {
+  const net = (accountId: string) =>
+    lines.filter((l) => l.accountId === accountId).reduce((s, l) => s + l.debit - l.credit, 0);
+  const paid = loans.filter((loan) => net(loan.liabilityAccountId) > 0);
+  if (paid.length !== 1) return null;
+  const loan = paid[0];
+  return {
+    loanId: loan.id,
+    principal: net(loan.liabilityAccountId),
+    interest: Math.max(0, net(loan.interestAccountId)),
+  };
+}

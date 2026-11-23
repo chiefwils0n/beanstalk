@@ -9,6 +9,7 @@ import { EntryForm } from "../../../components/EntryForm";
 import { ConfirmButton } from "../../../components/ConfirmButton";
 import { AuditList } from "../../../components/AuditList";
 import { withDiffs } from "../../../lib/audit";
+import { ClosedPeriodNote } from "../../../components/ClosedPeriodNote";
 
 export default async function TransactionPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -17,6 +18,8 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
     include: { lines: true, tags: true, documents: true },
   });
   if (!entry) notFound();
+  const business = await prisma.business.findUnique({ where: { id: entry.businessId }, select: { lockDate: true } });
+  const lockDate = business?.lockDate && entry.date <= business.lockDate ? business.lockDate : null;
 
   const [accounts, tags, classes, contacts, auditEvents] = await Promise.all([
     prisma.account.findMany({ where: { businessId: entry.businessId } }),
@@ -47,8 +50,9 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
           </h1>
           <p className="text-sm text-zinc-500">Posted {formatDate(entry.date)}</p>
         </div>
-        <div className="flex gap-2">
-          {entry.status === "POSTED" && (
+        <div className="flex items-center gap-2">
+          {lockDate && <ClosedPeriodNote lockDate={lockDate} />}
+          {!lockDate && entry.status === "POSTED" && (
             <form action={voidEntry}>
               <input type="hidden" name="id" value={entry.id} />
               <ConfirmButton message="Void this entry? It will be excluded from all balances and reports." className="btn btn-sm">
@@ -56,10 +60,12 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
               </ConfirmButton>
             </form>
           )}
-          <form action={deleteEntry}>
-            <input type="hidden" name="id" value={entry.id} />
-            <ConfirmButton message="Permanently delete this entry?">Delete</ConfirmButton>
-          </form>
+          {!lockDate && (
+            <form action={deleteEntry}>
+              <input type="hidden" name="id" value={entry.id} />
+              <ConfirmButton message="Permanently delete this entry?">Delete</ConfirmButton>
+            </form>
+          )}
         </div>
       </div>
 

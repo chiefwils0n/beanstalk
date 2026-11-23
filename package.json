@@ -16,7 +16,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:studio": "prisma studio",
     "db:studio:sandbox": "DATABASE_URL=file:./sandbox.db prisma studio",
-    "sandbox:refresh": "cp prisma/beanstalk.db prisma/sandbox.db && echo 'sandbox.db refreshed from beanstalk.db'",
+    "sandbox:refresh": "node --env-file=.env scripts/sandbox-refresh.mjs",
     "seed": "DATABASE_URL=file:./sandbox.db prisma migrate deploy && DATABASE_URL=file:./sandbox.db tsx prisma/seed.ts"
   },
   "dependencies": {

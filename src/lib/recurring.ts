@@ -69,9 +69,13 @@ export async function runDueRecurring(businessId: string): Promise<number> {
   const due = await prisma.recurringTransaction.findMany({
     where: { businessId, isActive: true, autoPost: true, nextRun: { lte: today } },
   });
+  const business = await prisma.business.findUnique({ where: { id: businessId }, select: { lockDate: true } });
+  const lockDate = business?.lockDate ?? null;
   let posted = 0;
   for (const recurring of due) {
     let next = recurring.nextRun;
+    // Never post into a closed period — leave the schedule waiting instead.
+    if (lockDate && next <= lockDate) continue;
     while (next <= today && (!recurring.endDate || next <= recurring.endDate)) {
       await postOccurrence(recurring.id, next);
       posted++;

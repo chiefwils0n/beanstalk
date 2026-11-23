@@ -8,6 +8,7 @@ import { authEnabled } from "../lib/auth";
 import { logoutAction } from "../lib/actions";
 
 const NAV_MAIN: [string, string][] = [
+  ["Bills", "/bills"],
   ["Chart of Accounts", "/accounts"],
   ["Contacts", "/contacts"],
   ["Documents", "/documents"],

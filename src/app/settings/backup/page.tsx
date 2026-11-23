@@ -16,8 +16,9 @@ export default function BackupSettingsPage() {
           </a>
         </div>
         <p className="text-sm text-zinc-500 dark:text-zinc-400">
-          To restore, stop the app and replace <span className="font-mono">prisma/beanstalk.db</span>{" "}
-          with the downloaded file (keep a copy of the current one first).
+          To restore, stop the app and replace your database file (the path in{" "}
+          <span className="font-mono">DATABASE_URL</span> in <span className="font-mono">.env</span>) with the
+          downloaded file — keep a copy of the current one first.
         </p>
       </div>
 
@@ -27,7 +28,7 @@ export default function BackupSettingsPage() {
           Store backups somewhere other than this computer, and never keep the live database in a
           file-sync folder (Dropbox, iCloud, Resilio…) — concurrent sync can corrupt it. For
           automated backups, schedule a periodic{" "}
-          <span className="font-mono">sqlite3 prisma/beanstalk.db &quot;.backup …&quot;</span>.
+          <span className="font-mono">sqlite3 /path/to/beanstalk.db &quot;.backup …&quot;</span>.
         </p>
       </div>
     </div>

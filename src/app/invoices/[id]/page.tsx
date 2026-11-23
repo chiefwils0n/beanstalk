@@ -5,6 +5,7 @@ import { sendInvoice, voidInvoice, deleteInvoice } from "../../../lib/actions";
 import { formatMoney, formatDate, toDateInput, todayUTC } from "../../../lib/money";
 import { PaymentForm } from "../../../components/PaymentForm";
 import { ConfirmButton } from "../../../components/ConfirmButton";
+import { ClosedPeriodNote } from "../../../components/ClosedPeriodNote";
 
 export default async function InvoicePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -37,6 +38,14 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
       )
     : 0;
   const balanceDue = invoice.total - paid;
+  const business = await prisma.business.findUnique({ where: { id: invoice.businessId }, select: { lockDate: true } });
+  const lock = business?.lockDate ?? null;
+  // Posted entries in a closed period can't be voided or deleted; a draft in a
+  // closed period can't be posted.
+  const lockDate =
+    lock && (invoice.entries.some((e) => e.date <= lock) || (invoice.status === "DRAFT" && invoice.issueDate <= lock))
+      ? lock
+      : null;
 
   const cashAccounts = await prisma.account.findMany({
     where: { businessId: invoice.businessId, type: "ASSET", isArchived: false },
@@ -61,14 +70,15 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
             {formatDate(invoice.dueDate)}
           </p>
         </div>
-        <div className="flex gap-2">
-          {invoice.status === "DRAFT" && (
+        <div className="flex items-center gap-2">
+          {lockDate && <ClosedPeriodNote lockDate={lockDate} />}
+          {!lockDate && invoice.status === "DRAFT" && (
             <form action={sendInvoice}>
               <input type="hidden" name="id" value={invoice.id} />
               <button className="btn btn-primary btn-sm">Mark sent & post</button>
             </form>
           )}
-          {(invoice.status === "SENT" || invoice.status === "PAID") && (
+          {!lockDate && (invoice.status === "SENT" || invoice.status === "PAID") && (
             <form action={voidInvoice}>
               <input type="hidden" name="id" value={invoice.id} />
               <ConfirmButton message="Void this invoice and its ledger entries?" className="btn btn-sm">
@@ -76,7 +86,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
               </ConfirmButton>
             </form>
           )}
-          {(invoice.status === "DRAFT" || invoice.status === "VOID") && (
+          {(invoice.status === "VOID" || (invoice.status === "DRAFT" && !lockDate)) && (
             <form action={deleteInvoice}>
               <input type="hidden" name="id" value={invoice.id} />
               <ConfirmButton message="Delete this invoice?">Delete</ConfirmButton>

@@ -68,7 +68,7 @@ bookkeeping is never disturbed by building new features:
 | --- | --- | --- |
 | Start with | `npm run start:prod` | `npm run dev` |
 | URL | http://localhost:3000 | http://localhost:3001 |
-| Database | `prisma/beanstalk.db` | `prisma/sandbox.db` |
+| Database | `DATABASE_URL` in `.env` (default `prisma/beanstalk.db`) | `prisma/sandbox.db` |
 | Reflects code changes | only after a rebuild | instantly (hot reload) |
 
 - **Production** serves a compiled build and is your daily driver. It's stable — it won't
@@ -76,6 +76,9 @@ bookkeeping is never disturbed by building new features:
   rebuilds, then serves).
 - **Development** hot-reloads on every edit but runs against a throwaway `sandbox.db`, so
   experiments, test transactions, and trial migrations can't touch your real books.
+- Keep the production database **out of any file-sync folder** (Dropbox, iCloud, Resilio…):
+  sync can roll it back or corrupt it. Put it somewhere local and point `.env` at it with an
+  absolute path, e.g. `DATABASE_URL="file:/Users/you/beanstalk-data/beanstalk.db"`.
 - For an always-on production server that survives reboots/crashes, use a process manager:
   `pm2 start "npm start" --name beanstalk`.
 
@@ -84,7 +87,7 @@ bookkeeping is never disturbed by building new features:
 1. Build & verify the feature in dev (`npm run dev`); schema changes go through
    `npm run db:migrate` (which targets the sandbox).
 2. Apply any new migrations to your real books: `npm run db:deploy`
-   (back up `prisma/beanstalk.db` first — copy the file somewhere safe).
+   (back up your database first — `sqlite3 <your .db> ".backup '<somewhere safe>.db'"`).
 3. Rebuild and restart production: `npm run start:prod`.
 4. Re-clone the sandbox so dev mirrors live data again: `npm run sandbox:refresh`.
 

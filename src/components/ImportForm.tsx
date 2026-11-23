@@ -30,10 +30,13 @@ const moneyInput = (cents: number) => (cents / 100).toFixed(2);
 export function ImportForm({
   accounts,
   savedMappings,
+  loans = [],
 }: {
   accounts: AccountOption[];
   /** Remembered column layout (JSON) by account id. */
   savedMappings: Record<string, string>;
+  /** Active loans, so a row that pays one down can say so. */
+  loans?: { id: string; name: string; liabilityAccountId: string }[];
 }) {
   const [pending, startTransition] = useTransition();
   const [accountId, setAccountId] = useState("");
@@ -51,7 +54,7 @@ export function ImportForm({
   const [preview, setPreview] = useState<{ key: string; data: ImportPreview } | null>(null);
   const [bulkCategory, setBulkCategory] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<{ imported: number; cleared: number } | null>(null);
+  const [done, setDone] = useState<{ imported: number; cleared: number; loanPayments: number } | null>(null);
   // Quick "add a rule" row in the review card. Bumping rulesVersion re-asks
   // the server for suggestions so a new rule fills in matching rows at once.
   const [ruleText, setRuleText] = useState("");
@@ -145,8 +148,14 @@ export function ImportForm({
     const splits = edit.splits ?? null;
     const parts = (splits ?? []).map((s) => ({ categoryId: s.categoryId, cents: parseCsvAmount(s.amount) }));
     const assigned = parts.reduce((sum, p) => sum + (p.cents ?? 0), 0);
+    // Money going out to exactly one loan's liability account is a loan payment.
+    const categories = splits
+      ? parts.filter((p) => (p.cents ?? 0) > 0).map((p) => p.categoryId)
+      : [edit.categoryId ?? suggestion];
+    const paying = row.amount < 0 ? loans.filter((l) => categories.includes(l.liabilityAccountId)) : [];
     return {
       row,
+      loan: paying.length === 1 ? paying[0] : null,
       splits,
       parts,
       /** Cents of a split row not yet given to a category (0 when it adds up). */
@@ -239,7 +248,7 @@ export function ImportForm({
         setError(result.error);
         return;
       }
-      setDone({ imported: result.imported ?? 0, cleared: result.cleared ?? 0 });
+      setDone({ imported: result.imported ?? 0, cleared: result.cleared ?? 0, loanPayments: result.loanPayments ?? 0 });
       setTable(null);
       setMapping(null);
       setEdits({});
@@ -298,6 +307,8 @@ export function ImportForm({
             Imported {done.imported} transaction{done.imported === 1 ? "" : "s"}.
             {done.cleared > 0 &&
               ` Marked ${done.cleared} already in your books as cleared.`}
+            {done.loanPayments > 0 &&
+              ` Recorded ${done.loanPayments} loan payment${done.loanPayments === 1 ? "" : "s"}.`}
           </span>
           <Link href="/transactions" className="btn btn-sm">
             View transactions
@@ -532,7 +543,7 @@ export function ImportForm({
                     </tr>
                   </thead>
                   <tbody>
-                    {view.map(({ row, match, repeat, rule, include, categoryId, memo, splits, remaining }) => (
+                    {view.map(({ row, match, repeat, rule, include, categoryId, memo, splits, remaining, loan }) => (
                       <tr key={row.line} className={include ? "" : "opacity-60"}>
                         <td className="td">
                           <input
@@ -597,6 +608,11 @@ export function ImportForm({
                           )}
                           {include && !splits && rule && (
                             <p className="mt-1 text-xs text-zinc-400">Rule: contains “{rule}”</p>
+                          )}
+                          {include && loan && (
+                            <p className="mt-1 text-xs text-emerald-700 dark:text-emerald-400">
+                              Also recorded as a payment on the loan “{loan.name}”
+                            </p>
                           )}
                           {include && splits && (
                             <div className="flex flex-col gap-1">

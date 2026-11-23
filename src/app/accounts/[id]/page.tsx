@@ -4,6 +4,8 @@ import { prisma } from "../../../lib/db";
 import { flattenAccounts } from "../../../lib/accounting";
 import { updateAccount } from "../../../lib/actions";
 import { formatMoney, formatDate } from "../../../lib/money";
+import { CASH_FLOW_SECTIONS, CASH_FLOW_LABELS } from "../../../lib/cashFlow";
+import { cashFlowSections } from "../../../lib/reports";
 
 export default async function AccountPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -20,6 +22,10 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
     }),
   ]);
   const parentOptions = flattenAccounts(siblings).filter((o) => o.id !== id);
+  const balanceSheet = account.type === "ASSET" || account.type === "LIABILITY" || account.type === "EQUITY";
+  const autoSection = balanceSheet
+    ? (await cashFlowSections(account.businessId)).sections.get(id) ?? "OPERATING"
+    : "OPERATING";
 
   return (
     <div className="flex flex-col gap-6">
@@ -59,6 +65,21 @@ export default async function AccountPage({ params }: { params: Promise<{ id: st
             <label className="label">Tax line</label>
             <input name="taxLine" defaultValue={account.taxLine ?? ""} className="input" />
           </div>
+          {balanceSheet && (
+            <div>
+              <label className="label">Cash flow statement</label>
+              <select name="cashFlow" className="input" defaultValue={account.cashFlow ?? ""}>
+                <option value="">
+                  Automatic{account.cashFlow ? "" : ` (${CASH_FLOW_LABELS[autoSection]})`}
+                </option>
+                {CASH_FLOW_SECTIONS.filter((s) => s !== "CASH" || account.type === "ASSET").map((s) => (
+                  <option key={s} value={s}>
+                    {CASH_FLOW_LABELS[s]}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <div className="sm:col-span-2">
             <label className="label">Description</label>
             <input name="description" defaultValue={account.description ?? ""} className="input" />

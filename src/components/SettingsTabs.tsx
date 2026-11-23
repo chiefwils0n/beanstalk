@@ -10,6 +10,8 @@ const TABS: [string, string][] = [
   ["Classes", "/settings/classes"],
   ["Contact types", "/settings/contact-types"],
   ["Import rules", "/settings/import-rules"],
+  ["Budget", "/settings/budget"],
+  ["Closing date", "/settings/closing"],
   ["Audit log", "/settings/audit"],
   ["Backup", "/settings/backup"],
 ];
@@ -17,7 +19,7 @@ const TABS: [string, string][] = [
 export function SettingsTabs() {
   const pathname = usePathname();
   return (
-    <nav className="mt-3 flex gap-1 border-b border-zinc-200 dark:border-zinc-800">
+    <nav className="mt-3 flex flex-wrap gap-1 border-b border-zinc-200 dark:border-zinc-800">
       {TABS.map(([label, href]) => {
         const active = pathname.startsWith(href);
         return (

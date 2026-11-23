@@ -9,8 +9,10 @@ import { checkPassword, createSession, SESSION_COOKIE, SESSION_TTL_MS } from "./
 import { seedChartOfAccounts } from "./coa";
 import { parseDate, parseMoney, toDateInput } from "./money";
 import { postOccurrence, runDueRecurring, advanceDate } from "./recurring";
-import { standardPayment, monthlyRate } from "./loans";
+import { standardPayment, monthlyRate, loanPaymentFromLines } from "./loans";
 import { checkBalanced } from "./ledger";
+import { lockedDateError } from "./periodLock";
+import { CASH_FLOW_SECTIONS } from "./cashFlow";
 import {
   entryLinesForSplit,
   findCategoryRule,
@@ -24,6 +26,30 @@ import type { Prisma } from "@prisma/client";
 
 function str(formData: FormData, key: string): string {
   return String(formData.get(key) ?? "").trim();
+}
+
+// ---------------------------------------------------------------- closing date
+
+/** Error message if any of the dates falls in the business's closed period. */
+async function lockError(businessId: string, dates: Date[]): Promise<string | null> {
+  const business = await prisma.business.findUnique({ where: { id: businessId }, select: { lockDate: true } });
+  return lockedDateError(business?.lockDate, dates);
+}
+
+async function assertUnlocked(businessId: string, dates: Date[]) {
+  const error = await lockError(businessId, dates);
+  if (error) throw new Error(error);
+}
+
+/** Set (or clear) the date the books are closed through. */
+export async function setLockDate(formData: FormData) {
+  const business = await requireBusiness();
+  const value = str(formData, "lockDate");
+  await prisma.business.update({
+    where: { id: business.id },
+    data: { lockDate: value ? parseDate(value) : null },
+  });
+  revalidatePath("/settings/closing");
 }
 
 // ----------------------------------------------------------------------- auth
@@ -166,9 +192,17 @@ export async function updateAccount(id: string, formData: FormData) {
       taxLine: str(formData, "taxLine") || null,
       description: str(formData, "description") || null,
       parentId,
+      ...(formData.has("cashFlow")
+        ? {
+            cashFlow: (CASH_FLOW_SECTIONS as readonly string[]).includes(str(formData, "cashFlow"))
+              ? str(formData, "cashFlow")
+              : null,
+          }
+        : {}),
     },
   });
   revalidatePath("/accounts");
+  revalidatePath("/reports/cash-flow");
   redirect("/accounts");
 }
 
@@ -321,6 +355,8 @@ export async function createEntry(input: EntryInput): Promise<{ error?: string; 
   const business = await requireBusiness();
   const result = validateEntry(input);
   if ("error" in result) return { error: result.error };
+  const locked = lockedDateError(business.lockDate, [parseDate(input.date)]);
+  if (locked) return { error: locked };
   const created = await prisma.journalEntry.create({
     data: {
       businessId: business.id,
@@ -352,6 +388,10 @@ export async function updateEntry(id: string, input: EntryInput): Promise<{ erro
     select: { accountId: true, cleared: true },
   });
   if (existing.some((l) => l.cleared === "RECONCILED")) return { error: RECONCILED_EDIT_MESSAGE };
+  const current = await prisma.journalEntry.findUnique({ where: { id }, select: { businessId: true, date: true } });
+  if (!current) return { error: "Transaction not found" };
+  const locked = await lockError(current.businessId, [current.date, parseDate(input.date)]);
+  if (locked) return { error: locked };
   const clearedAccounts = new Set(
     existing.filter((l) => l.cleared === "CLEARED").map((l) => l.accountId)
   );
@@ -381,12 +421,14 @@ export async function updateEntry(id: string, input: EntryInput): Promise<{ erro
   return {};
 }
 
-/** Reject mutating an entry that is part of a completed reconciliation. */
+/** Reject mutating an entry that is reconciled or dated in a closed period. */
 async function assertNotReconciled(entryId: string) {
   const count = await prisma.journalLine.count({
     where: { entryId, cleared: "RECONCILED" },
   });
   if (count > 0) throw new Error(RECONCILED_EDIT_MESSAGE);
+  const entry = await prisma.journalEntry.findUnique({ where: { id: entryId }, select: { businessId: true, date: true } });
+  if (entry) await assertUnlocked(entry.businessId, [entry.date]);
 }
 
 export async function voidEntry(formData: FormData) {
@@ -601,7 +643,7 @@ export async function importTransactions(input: {
   markCleared?: boolean;
   clearLineIds?: string[];
   savedMapping?: string;
-}): Promise<{ error?: string; imported?: number; cleared?: number }> {
+}): Promise<{ error?: string; imported?: number; cleared?: number; loanPayments?: number }> {
   const business = await requireBusiness();
   const { accountId, rows } = input;
   const clearLineIds = (input.clearLineIds ?? []).filter((id) => typeof id === "string").slice(0, MAX_IMPORT_ROWS);
@@ -659,7 +701,19 @@ export async function importTransactions(input: {
     });
   }
 
+  const locked = lockedDateError(business.lockDate, entries.map((e) => e.date));
+  if (locked) return { error: locked };
+
+  // A row that pays down a loan (a split into principal and interest, say) is
+  // also recorded on that loan, so it shows in the loan's payment history.
+  const loans = await prisma.loan.findMany({
+    where: { businessId: business.id, status: "ACTIVE" },
+    select: { id: true, liabilityAccountId: true, interestAccountId: true, payment: true },
+  });
+
   let cleared = 0;
+  let loanPayments = 0;
+  const loanIds = new Set<string>();
   await prisma.$transaction(
     async (tx) => {
       if (clearLineIds.length > 0) {
@@ -689,6 +743,26 @@ export async function importTransactions(input: {
           include: ENTRY_AUDIT_INCLUDE,
         });
         await recordEntryAudit("CREATED", created, tx);
+        const paid = loanPaymentFromLines(entry.lines, loans);
+        const moneyOut = entry.lines.some((l) => l.accountId === accountId && l.credit > 0);
+        if (paid && moneyOut) {
+          const loan = loans.find((l) => l.id === paid.loanId)!;
+          // "Extra" is principal beyond the scheduled payment; a payment with
+          // no interest is all extra, as with a principal-only payment.
+          const scheduled = paid.interest > 0 ? Math.max(loan.payment - paid.interest, 0) : 0;
+          await tx.loanPayment.create({
+            data: {
+              loanId: paid.loanId,
+              date: entry.date,
+              interest: paid.interest,
+              principal: paid.principal,
+              extra: Math.max(0, paid.principal - scheduled),
+              entryId: created.id,
+            },
+          });
+          loanPayments++;
+          loanIds.add(paid.loanId);
+        }
       }
     },
     { timeout: 120000 }
@@ -697,7 +771,11 @@ export async function importTransactions(input: {
   revalidatePath("/transactions/import");
   revalidatePath("/reconcile");
   revalidatePath("/");
-  return { imported: entries.length, cleared };
+  if (loanPayments > 0) {
+    revalidatePath("/loans");
+    for (const id of loanIds) revalidatePath(`/loans/${id}`);
+  }
+  return { imported: entries.length, cleared, loanPayments };
 }
 
 // ------------------------------------------------------------------ contacts
@@ -781,6 +859,8 @@ export async function deleteContact(formData: FormData) {
   const invoiceCount = await prisma.invoice.count({ where: { customerId: id } });
   if (invoiceCount > 0)
     throw new Error("Contact has invoices and cannot be deleted");
+  if ((await prisma.bill.count({ where: { vendorId: id } })) > 0)
+    throw new Error("Contact has bills and cannot be deleted");
   // Journal/recurring lines keep their amounts; contactId is nulled via SetNull.
   await prisma.contact.delete({ where: { id } });
   revalidatePath("/contacts");
@@ -872,6 +952,7 @@ export async function sendInvoice(formData: FormData) {
     include: { items: true, customer: true },
   });
   if (invoice.status !== "DRAFT") throw new Error("Only draft invoices can be sent");
+  await assertUnlocked(invoice.businessId, [invoice.issueDate]);
   const receivable = await getReceivableAccount(invoice.businessId);
   await prisma.journalEntry.create({
     data: {
@@ -910,6 +991,8 @@ export async function recordInvoicePayment(
   });
   if (invoice.status !== "SENT") return { error: "Send the invoice before recording payments" };
   if (input.amount <= 0) return { error: "Payment amount must be positive" };
+  const locked = await lockError(invoice.businessId, [parseDate(input.date)]);
+  if (locked) return { error: locked };
   const receivable = await getReceivableAccount(invoice.businessId);
   await prisma.journalEntry.create({
     data: {
@@ -943,8 +1026,18 @@ export async function invoicePaidAmount(invoiceId: string, receivableId: string)
   return result._sum.credit ?? 0;
 }
 
+/** Refuse to void/delete a document whose posted entries sit in a closed period. */
+async function assertEntriesUnlocked(where: Prisma.JournalEntryWhereInput) {
+  const entries = await prisma.journalEntry.findMany({
+    where: { ...where, status: "POSTED" },
+    select: { businessId: true, date: true },
+  });
+  if (entries.length > 0) await assertUnlocked(entries[0].businessId, entries.map((e) => e.date));
+}
+
 export async function voidInvoice(formData: FormData) {
   const id = str(formData, "id");
+  await assertEntriesUnlocked({ invoiceId: id });
   await prisma.$transaction([
     prisma.journalEntry.updateMany({ where: { invoiceId: id }, data: { status: "VOID" } }),
     prisma.invoice.update({ where: { id }, data: { status: "VOID" } }),
@@ -958,6 +1051,7 @@ export async function deleteInvoice(formData: FormData) {
   const invoice = await prisma.invoice.findUniqueOrThrow({ where: { id } });
   if (invoice.status !== "DRAFT" && invoice.status !== "VOID")
     throw new Error("Only draft or void invoices can be deleted");
+  await assertEntriesUnlocked({ invoiceId: id });
   await prisma.$transaction([
     prisma.journalEntry.deleteMany({ where: { invoiceId: id } }),
     prisma.invoice.delete({ where: { id } }),
@@ -1057,6 +1151,7 @@ export async function deleteRecurring(formData: FormData) {
 export async function postRecurringNow(formData: FormData) {
   const id = str(formData, "id");
   const recurring = await prisma.recurringTransaction.findUniqueOrThrow({ where: { id } });
+  await assertUnlocked(recurring.businessId, [recurring.nextRun]);
   await postOccurrence(id, recurring.nextRun);
   await prisma.recurringTransaction.update({
     where: { id },
@@ -1141,6 +1236,10 @@ export async function createLoan(formData: FormData) {
   }
   const paymentAccountId = str(formData, "paymentAccountId");
   if (!paymentAccountId) throw new Error("Choose the account payments come from");
+  if (str(formData, "postDisbursement") === "on") {
+    const locked = lockedDateError(business.lockDate, [parseDate(str(formData, "firstPaymentDate"))]);
+    if (locked) throw new Error(locked);
+  }
 
   const loan = await prisma.loan.create({
     data: {
@@ -1239,6 +1338,8 @@ export async function recordLoanPayment(
   const balance = loan.principal - paidPrincipal;
   if (balance <= 0) return { error: "This loan is already paid off" };
   if (input.extra < 0) return { error: "Extra principal cannot be negative" };
+  const locked = await lockError(loan.businessId, [parseDate(input.date)]);
+  if (locked) return { error: locked };
 
   let interest = 0;
   let scheduledPrincipal = 0;
@@ -1287,6 +1388,7 @@ export async function recordLoanPayment(
 export async function deleteLoanPayment(formData: FormData) {
   const id = str(formData, "id");
   const payment = await prisma.loanPayment.findUniqueOrThrow({ where: { id } });
+  if (payment.entryId) await assertNotReconciled(payment.entryId);
   await prisma.$transaction([
     prisma.loanPayment.delete({ where: { id } }),
     ...(payment.entryId
@@ -1296,6 +1398,282 @@ export async function deleteLoanPayment(formData: FormData) {
   revalidatePath(`/loans/${payment.loanId}`);
   revalidatePath("/loans");
   revalidatePath("/transactions");
+}
+
+// --------------------------------------------------------------------- bills
+
+export type BillItemInput = {
+  accountId: string;
+  classId?: string;
+  description: string;
+  amount: number; // cents
+};
+
+export type BillInput = {
+  vendorId?: string;
+  newVendorName?: string;
+  number?: string;
+  billDate: string;
+  dueDate: string;
+  notes?: string;
+  items: BillItemInput[];
+};
+
+async function getPayableAccount(businessId: string) {
+  const existing = await prisma.account.findFirst({
+    where: { businessId, type: "LIABILITY", name: "Accounts Payable" },
+  });
+  if (existing) return existing;
+  return prisma.account.create({
+    data: { businessId, name: "Accounts Payable", type: "LIABILITY", code: "2000" },
+  });
+}
+
+/** What has been paid against a bill: debits to Accounts Payable on its posted entries. */
+async function billPaidAmount(billId: string, payableId: string): Promise<number> {
+  const result = await prisma.journalLine.aggregate({
+    where: { accountId: payableId, entry: { billId, status: "POSTED" } },
+    _sum: { debit: true },
+  });
+  return result._sum.debit ?? 0;
+}
+
+/**
+ * Enter a vendor bill. It posts straight away: each line is debited to its
+ * expense account and the total is credited to Accounts Payable, dated the
+ * bill date — so the expense lands in the period it belongs to, paid or not.
+ */
+export async function createBill(input: BillInput): Promise<{ error?: string; id?: string }> {
+  const business = await requireBusiness();
+  const items = input.items.filter((i) => i.accountId && i.amount !== 0);
+  if (items.length === 0) return { error: "A bill needs at least one line with an account and an amount" };
+  if (items.some((i) => !Number.isSafeInteger(i.amount) || i.amount < 0)) return { error: "Line amounts must be positive" };
+  if (!ISO_DATE.test(input.billDate) || !ISO_DATE.test(input.dueDate)) return { error: "Enter the bill date and due date" };
+  const billDate = parseDate(input.billDate);
+  const dueDate = parseDate(input.dueDate);
+  if (dueDate < billDate) return { error: "The due date can't be before the bill date" };
+  const locked = lockedDateError(business.lockDate, [billDate]);
+  if (locked) return { error: locked };
+
+  const accounts = await prisma.account.findMany({
+    where: { businessId: business.id, isArchived: false },
+    select: { id: true },
+  });
+  const validIds = new Set(accounts.map((a) => a.id));
+  if (items.some((i) => !validIds.has(i.accountId))) return { error: "Choose an account for every line" };
+
+  let vendorId = input.vendorId;
+  if (vendorId) {
+    const vendor = await prisma.contact.findFirst({ where: { id: vendorId, businessId: business.id } });
+    if (!vendor) return { error: "Vendor not found" };
+  } else if (input.newVendorName?.trim()) {
+    const vendorType = await prisma.contactType.findFirst({ where: { businessId: business.id, name: "Vendor" } });
+    const vendor = await prisma.contact.create({
+      data: { businessId: business.id, typeId: vendorType?.id ?? null, name: input.newVendorName.trim() },
+    });
+    vendorId = vendor.id;
+  }
+  if (!vendorId) return { error: "Choose or create a vendor" };
+  const vendor = await prisma.contact.findUniqueOrThrow({ where: { id: vendorId } });
+
+  const payable = await getPayableAccount(business.id);
+  if (items.some((i) => i.accountId === payable.id)) return { error: "A bill line can't post to Accounts Payable" };
+  const total = items.reduce((s, i) => s + i.amount, 0);
+  const number = input.number?.trim() || null;
+  const lines = [
+    ...items.map((i) => ({
+      accountId: i.accountId,
+      classId: i.classId || undefined,
+      contactId: vendor.id,
+      description: i.description.trim() || undefined,
+      debit: i.amount,
+      credit: 0,
+    })),
+    { accountId: payable.id, contactId: vendor.id, debit: 0, credit: total },
+  ];
+  const balanceError = checkBalanced(lines);
+  if (balanceError) return { error: balanceError };
+
+  const bill = await prisma.$transaction(async (tx) => {
+    const created = await tx.bill.create({
+      data: {
+        businessId: business.id,
+        vendorId: vendor.id,
+        number,
+        billDate,
+        dueDate,
+        notes: input.notes?.trim() || null,
+        total,
+        items: {
+          create: items.map((i) => ({
+            accountId: i.accountId,
+            classId: i.classId || undefined,
+            description: i.description.trim(),
+            amount: i.amount,
+          })),
+        },
+      },
+    });
+    const entry = await tx.journalEntry.create({
+      data: {
+        businessId: business.id,
+        date: billDate,
+        memo: `Bill${number ? ` ${number}` : ""} — ${vendor.name}`,
+        reference: number,
+        billId: created.id,
+        lines: { create: lines },
+      },
+      include: ENTRY_AUDIT_INCLUDE,
+    });
+    await recordEntryAudit("CREATED", entry, tx);
+    return created;
+  });
+  revalidatePath("/bills");
+  revalidatePath("/transactions");
+  revalidatePath("/");
+  return { id: bill.id };
+}
+
+/** Pay all or part of a bill from a bank (or card) account. */
+export async function recordBillPayment(
+  billId: string,
+  input: { date: string; accountId: string; amount: number }
+): Promise<{ error?: string }> {
+  const business = await requireBusiness();
+  const bill = await prisma.bill.findFirst({
+    where: { id: billId, businessId: business.id },
+    include: { vendor: true },
+  });
+  if (!bill) return { error: "Bill not found" };
+  if (bill.status !== "OPEN") return { error: "Only an open bill can be paid" };
+  if (!Number.isSafeInteger(input.amount) || input.amount <= 0) return { error: "Payment amount must be positive" };
+  if (!ISO_DATE.test(input.date)) return { error: "Enter the payment date" };
+  const date = parseDate(input.date);
+  const locked = lockedDateError(business.lockDate, [date]);
+  if (locked) return { error: locked };
+  const payable = await getPayableAccount(business.id);
+  const from = await prisma.account.findFirst({
+    where: { id: input.accountId, businessId: business.id, isArchived: false },
+  });
+  if (!from || from.id === payable.id) return { error: "Choose the account the payment comes from" };
+  const balance = bill.total - (await billPaidAmount(bill.id, payable.id));
+  if (input.amount > balance) return { error: "That is more than the balance due on this bill" };
+
+  const lines = [
+    { accountId: payable.id, contactId: bill.vendorId, debit: input.amount, credit: 0 },
+    { accountId: from.id, contactId: bill.vendorId, debit: 0, credit: input.amount },
+  ];
+  const balanceError = checkBalanced(lines);
+  if (balanceError) return { error: balanceError };
+  await prisma.$transaction(async (tx) => {
+    const entry = await tx.journalEntry.create({
+      data: {
+        businessId: business.id,
+        date,
+        memo: `Bill payment${bill.number ? ` ${bill.number}` : ""} — ${bill.vendor.name}`,
+        reference: bill.number,
+        billId: bill.id,
+        lines: { create: lines },
+      },
+      include: ENTRY_AUDIT_INCLUDE,
+    });
+    await recordEntryAudit("CREATED", entry, tx);
+    if (input.amount >= balance) await tx.bill.update({ where: { id: bill.id }, data: { status: "PAID" } });
+  });
+  revalidatePath(`/bills/${billId}`);
+  revalidatePath("/bills");
+  revalidatePath("/transactions");
+  revalidatePath("/");
+  return {};
+}
+
+/** Void a bill: its ledger entries (the bill and any payments) are voided too. */
+export async function voidBill(formData: FormData) {
+  const business = await requireBusiness();
+  const id = str(formData, "id");
+  const bill = await prisma.bill.findFirst({ where: { id, businessId: business.id } });
+  if (!bill) throw new Error("Bill not found");
+  const reconciled = await prisma.journalLine.count({
+    where: { cleared: "RECONCILED", entry: { billId: id, status: "POSTED" } },
+  });
+  if (reconciled > 0) throw new Error(RECONCILED_EDIT_MESSAGE);
+  await assertEntriesUnlocked({ billId: id });
+  await prisma.$transaction(async (tx) => {
+    const entries = await tx.journalEntry.findMany({ where: { billId: id, status: "POSTED" }, select: { id: true } });
+    for (const { id: entryId } of entries) {
+      const voided = await tx.journalEntry.update({
+        where: { id: entryId },
+        data: { status: "VOID" },
+        include: ENTRY_AUDIT_INCLUDE,
+      });
+      await recordEntryAudit("VOIDED", voided, tx);
+    }
+    await tx.bill.update({ where: { id }, data: { status: "VOID" } });
+  });
+  revalidatePath(`/bills/${id}`);
+  revalidatePath("/bills");
+  revalidatePath("/transactions");
+  revalidatePath("/");
+}
+
+/** Remove a voided bill and its (already voided) ledger entries. */
+export async function deleteBill(formData: FormData) {
+  const business = await requireBusiness();
+  const id = str(formData, "id");
+  const bill = await prisma.bill.findFirst({ where: { id, businessId: business.id } });
+  if (!bill) throw new Error("Bill not found");
+  if (bill.status !== "VOID") throw new Error("Void the bill before deleting it");
+  await prisma.$transaction(async (tx) => {
+    const entries = await tx.journalEntry.findMany({ where: { billId: id }, include: ENTRY_AUDIT_INCLUDE });
+    for (const entry of entries) {
+      await tx.journalEntry.delete({ where: { id: entry.id } });
+      await recordEntryAudit("DELETED", entry, tx);
+    }
+    await tx.bill.delete({ where: { id } });
+  });
+  revalidatePath("/bills");
+  revalidatePath("/transactions");
+  redirect("/bills");
+}
+
+// -------------------------------------------------------------------- budgets
+
+/**
+ * Replace a year's budget. `cells` holds one amount (cents) per account and
+ * month; zero or missing cells mean no budget for that month.
+ */
+export async function saveBudget(input: {
+  year: number;
+  cells: { accountId: string; month: number; amount: number }[];
+}): Promise<{ error?: string; saved?: number }> {
+  const business = await requireBusiness();
+  const year = Math.round(Number(input.year));
+  if (!Number.isInteger(year) || year < 1990 || year > 2200) return { error: "Invalid year" };
+  const accounts = await prisma.account.findMany({
+    where: { businessId: business.id, type: { in: ["INCOME", "EXPENSE"] } },
+    select: { id: true },
+  });
+  const validIds = new Set(accounts.map((a) => a.id));
+  const seen = new Set<string>();
+  const cells: { accountId: string; month: number; amount: number }[] = [];
+  for (const cell of input.cells ?? []) {
+    if (!validIds.has(cell.accountId)) return { error: "Budgets are for income and expense accounts" };
+    if (!Number.isInteger(cell.month) || cell.month < 1 || cell.month > 12) return { error: "Invalid month" };
+    if (!Number.isSafeInteger(cell.amount) || cell.amount < 0) return { error: "Budget amounts must be zero or more" };
+    const key = `${cell.accountId}:${cell.month}`;
+    if (seen.has(key)) return { error: "Duplicate budget cell" };
+    seen.add(key);
+    if (cell.amount > 0) cells.push(cell);
+  }
+  await prisma.$transaction([
+    prisma.budget.deleteMany({ where: { businessId: business.id, year } }),
+    prisma.budget.createMany({
+      data: cells.map((c) => ({ businessId: business.id, accountId: c.accountId, year, month: c.month, amount: c.amount })),
+    }),
+  ]);
+  revalidatePath("/settings/budget");
+  revalidatePath("/reports/budget-vs-actual");
+  return { saved: cells.length };
 }
 
 // ------------------------------------------------------------- reconciliation
