@@ -12,10 +12,11 @@ import { postOccurrence, runDueRecurring, advanceDate } from "./recurring";
 import { standardPayment, monthlyRate } from "./loans";
 import { checkBalanced } from "./ledger";
 import {
-  entryLinesForRow,
+  entryLinesForSplit,
   findCategoryRule,
   matchExistingLines,
   normalizeRuleText,
+  parseSavedMapping,
   MAX_IMPORT_ROWS,
   MATCH_TOLERANCE_DAYS,
 } from "./csvImport";
@@ -414,7 +415,7 @@ export async function deleteEntry(formData: FormData) {
 export type ImportPreviewRow = { date: string; amount: number; description: string };
 export type ImportPreview = {
   /** Per row: the existing entry that already records it, if any. */
-  matches: ({ entryId: string; date: string; memo: string } | null)[];
+  matches: ({ entryId: string; lineId: string; date: string; memo: string; cleared: string } | null)[];
   /**
    * Per row: a suggested category — from an import rule when one matches the
    * description, otherwise the category last used for the same description.
@@ -456,7 +457,13 @@ export async function previewImport(
         },
       },
     },
-    select: { id: true, debit: true, credit: true, entry: { select: { id: true, date: true, memo: true } } },
+    select: {
+      id: true,
+      debit: true,
+      credit: true,
+      cleared: true,
+      entry: { select: { id: true, date: true, memo: true } },
+    },
   });
   const matched = matchExistingLines(
     rows,
@@ -465,7 +472,15 @@ export async function previewImport(
   const lineById = new Map(existing.map((l) => [l.id, l]));
   const matches = rows.map((_, i) => {
     const line = lineById.get(matched.get(i) ?? "");
-    return line ? { entryId: line.entry.id, date: toDateInput(line.entry.date), memo: line.entry.memo } : null;
+    return line
+      ? {
+          entryId: line.entry.id,
+          lineId: line.id,
+          date: toDateInput(line.entry.date),
+          memo: line.entry.memo,
+          cleared: line.cleared,
+        }
+      : null;
   });
 
   // Category memory: the other side of the most recent simple (two-line)
@@ -562,19 +577,39 @@ export type ImportRowInput = {
   reference?: string;
   amount: number; // signed cents; positive = money into the account
   categoryAccountId: string;
+  /**
+   * Split the row across several categories instead of `categoryAccountId`.
+   * Amounts are cents in the row's direction and must add up to its amount.
+   */
+  splits?: { categoryAccountId: string; amount: number }[];
 };
 
 /**
- * Post each CSV row as a two-line journal entry between the imported account
- * and its category. All-or-nothing: any invalid row aborts the whole import.
+ * Post each CSV row as a journal entry between the imported account and its
+ * category (or categories, for a split row). All-or-nothing: any invalid row
+ * aborts the whole import.
+ *
+ * `markCleared` posts the imported account's side as CLEARED, since the row
+ * came from the bank's own records. `clearLineIds` are existing lines on that
+ * account the file also confirms ("already in books"); only uncleared ones are
+ * touched — never a reconciled line. `savedMapping` remembers the file's
+ * column layout on the account for next time.
  */
 export async function importTransactions(input: {
   accountId: string;
   rows: ImportRowInput[];
-}): Promise<{ error?: string; imported?: number }> {
+  markCleared?: boolean;
+  clearLineIds?: string[];
+  savedMapping?: string;
+}): Promise<{ error?: string; imported?: number; cleared?: number }> {
   const business = await requireBusiness();
   const { accountId, rows } = input;
-  if (rows.length === 0) return { error: "Nothing to import" };
+  const clearLineIds = (input.clearLineIds ?? []).filter((id) => typeof id === "string").slice(0, MAX_IMPORT_ROWS);
+  const savedMapping =
+    input.savedMapping && input.savedMapping.length <= 4000 && parseSavedMapping(input.savedMapping)
+      ? input.savedMapping
+      : null;
+  if (rows.length === 0 && clearLineIds.length === 0) return { error: "Nothing to import" };
   if (rows.length > MAX_IMPORT_ROWS) return { error: `Too many rows — import at most ${MAX_IMPORT_ROWS} at a time` };
 
   const accounts = await prisma.account.findMany({
@@ -584,7 +619,12 @@ export async function importTransactions(input: {
   const validIds = new Set(accounts.map((a) => a.id));
   if (!validIds.has(accountId)) return { error: "Account not found" };
 
-  const entries: { date: Date; memo: string; reference: string | null; lines: EntryLineInput[] }[] = [];
+  const entries: {
+    date: Date;
+    memo: string;
+    reference: string | null;
+    lines: (EntryLineInput & { cleared?: string })[];
+  }[] = [];
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
     const label = `Row ${i + 1}${row.memo ? ` (${row.memo.slice(0, 40)})` : ""}`;
@@ -595,8 +635,11 @@ export async function importTransactions(input: {
     } catch {
       return { error: `${label}: invalid date` };
     }
-    if (!validIds.has(row.categoryAccountId)) return { error: `${label}: choose a category account` };
-    const built = entryLinesForRow(row.amount, accountId, row.categoryAccountId);
+    const parts = row.splits?.length
+      ? row.splits
+      : [{ categoryAccountId: row.categoryAccountId, amount: Math.abs(row.amount) }];
+    if (parts.some((p) => !validIds.has(p.categoryAccountId))) return { error: `${label}: choose a category account` };
+    const built = entryLinesForSplit(row.amount, accountId, parts);
     if ("error" in built) return { error: `${label}: ${built.error}` };
     const checked = validateEntry({
       date: row.date,
@@ -610,12 +653,30 @@ export async function importTransactions(input: {
       date,
       memo: row.memo.trim(),
       reference: row.reference?.trim() || null,
-      lines: checked.lines,
+      lines: input.markCleared
+        ? checked.lines.map((l) => (l.accountId === accountId ? { ...l, cleared: "CLEARED" } : l))
+        : checked.lines,
     });
   }
 
+  let cleared = 0;
   await prisma.$transaction(
     async (tx) => {
+      if (clearLineIds.length > 0) {
+        const result = await tx.journalLine.updateMany({
+          where: {
+            id: { in: clearLineIds },
+            accountId,
+            cleared: "NONE",
+            entry: { businessId: business.id, status: "POSTED" },
+          },
+          data: { cleared: "CLEARED" },
+        });
+        cleared = result.count;
+      }
+      if (savedMapping) {
+        await tx.account.update({ where: { id: accountId }, data: { importMapping: savedMapping } });
+      }
       for (const entry of entries) {
         const created = await tx.journalEntry.create({
           data: {
@@ -633,8 +694,10 @@ export async function importTransactions(input: {
     { timeout: 120000 }
   );
   revalidatePath("/transactions");
+  revalidatePath("/transactions/import");
+  revalidatePath("/reconcile");
   revalidatePath("/");
-  return { imported: entries.length };
+  return { imported: entries.length, cleared };
 }
 
 // ------------------------------------------------------------------ contacts

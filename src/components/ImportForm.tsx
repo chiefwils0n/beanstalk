@@ -6,9 +6,12 @@ import { addImportRule, importTransactions, previewImport, type ImportPreview } 
 import {
   buildImportRows,
   detectColumns,
+  encodeSavedMapping,
   findRepeatsInFile,
   looksLikeHeader,
   parseCsv,
+  parseCsvAmount,
+  savedMappingForFile,
   MAX_IMPORT_ROWS,
   type AmountMode,
   type ColumnMapping,
@@ -17,20 +20,38 @@ import {
 import { formatDate, formatMoney, parseDate } from "../lib/money";
 import type { AccountOption } from "./EntryForm";
 
-type RowEdit = { include?: boolean; categoryId?: string; memo?: string };
+/** One category's share of a split row; `amount` is what the user typed. */
+type SplitEdit = { categoryId: string; amount: string };
+type RowEdit = { include?: boolean; categoryId?: string; memo?: string; splits?: SplitEdit[] };
 
-export function ImportForm({ accounts }: { accounts: AccountOption[] }) {
+const widestRow = (table: string[][]) => Math.max(...table.map((r) => r.length));
+const moneyInput = (cents: number) => (cents / 100).toFixed(2);
+
+export function ImportForm({
+  accounts,
+  savedMappings,
+}: {
+  accounts: AccountOption[];
+  /** Remembered column layout (JSON) by account id. */
+  savedMappings: Record<string, string>;
+}) {
   const [pending, startTransition] = useTransition();
   const [accountId, setAccountId] = useState("");
   const [fileName, setFileName] = useState("");
   const [table, setTable] = useState<string[][] | null>(null);
   const [hasHeader, setHasHeader] = useState(true);
   const [mapping, setMapping] = useState<ColumnMapping | null>(null);
+  // Where the current column mapping came from: guessed from the file, the
+  // layout remembered for this account, or the user's own changes (which a
+  // later account switch must not overwrite).
+  const [mappingSource, setMappingSource] = useState<"guess" | "saved" | "manual">("guess");
+  const [markCleared, setMarkCleared] = useState(true);
+  const [clearExisting, setClearExisting] = useState(true);
   const [edits, setEdits] = useState<Record<number, RowEdit>>({});
   const [preview, setPreview] = useState<{ key: string; data: ImportPreview } | null>(null);
   const [bulkCategory, setBulkCategory] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<number | null>(null);
+  const [done, setDone] = useState<{ imported: number; cleared: number } | null>(null);
   // Quick "add a rule" row in the review card. Bumping rulesVersion re-asks
   // the server for suggestions so a new rule fills in matching rows at once.
   const [ruleText, setRuleText] = useState("");
@@ -57,14 +78,26 @@ export function ImportForm({ accounts }: { accounts: AccountOption[] }) {
       setError("That file has no rows.");
       return;
     }
-    const header = looksLikeHeader(parsed[0]);
     setFileName(file.name);
     setTable(parsed);
-    setHasHeader(header);
-    setMapping(detectColumns(header ? parsed[0] : []));
+    chooseMapping(parsed, accountId);
   };
 
-  const columnCount = table ? Math.max(...table.map((r) => r.length)) : 0;
+  /** Use the layout remembered for the account if it fits this file, else guess. */
+  const chooseMapping = (parsed: string[][], forAccountId: string) => {
+    const saved = savedMappingForFile(savedMappings[forAccountId], parsed[0], widestRow(parsed));
+    const header = saved ? saved.hasHeader : looksLikeHeader(parsed[0]);
+    setHasHeader(header);
+    setMapping(saved ? saved.mapping : detectColumns(header ? parsed[0] : []));
+    setMappingSource(saved ? "saved" : "guess");
+  };
+
+  const changeAccount = (id: string) => {
+    setAccountId(id);
+    if (table && mappingSource !== "manual") chooseMapping(table, id);
+  };
+
+  const columnCount = table ? widestRow(table) : 0;
   const columnNames = useMemo(
     () =>
       Array.from({ length: columnCount }, (_, i) =>
@@ -109,8 +142,15 @@ export function ImportForm({ accounts }: { accounts: AccountOption[] }) {
     const match = live?.matches[i] ?? null;
     const repeat = repeats.has(i);
     const suggestion = live?.suggestions[i] ?? "";
+    const splits = edit.splits ?? null;
+    const parts = (splits ?? []).map((s) => ({ categoryId: s.categoryId, cents: parseCsvAmount(s.amount) }));
+    const assigned = parts.reduce((sum, p) => sum + (p.cents ?? 0), 0);
     return {
       row,
+      splits,
+      parts,
+      /** Cents of a split row not yet given to a category (0 when it adds up). */
+      remaining: Math.abs(row.amount) - assigned,
       match,
       repeat,
       // The rule behind this row's category, while the category is still the rule's.
@@ -121,7 +161,14 @@ export function ImportForm({ accounts }: { accounts: AccountOption[] }) {
     };
   });
   const included = view.filter((v) => v.include);
-  const uncategorized = included.filter((v) => !v.categoryId || v.categoryId === accountId);
+  const uncategorized = included.filter((v) => !v.splits && (!v.categoryId || v.categoryId === accountId));
+  const badSplits = included.filter(
+    (v) =>
+      v.splits &&
+      (v.remaining !== 0 || v.parts.some((p) => !p.cents || !p.categoryId || p.categoryId === accountId))
+  );
+  // Rows the file confirms are already in the books but aren't cleared yet.
+  const clearable = view.filter((v) => !v.include && v.match?.cleared === "NONE");
   const missingMemo = included.filter((v) => !v.memo.trim());
   const moneyIn = included.reduce((s, v) => s + (v.row.amount > 0 ? v.row.amount : 0), 0);
   const moneyOut = included.reduce((s, v) => s + (v.row.amount < 0 ? -v.row.amount : 0), 0);
@@ -130,8 +177,19 @@ export function ImportForm({ accounts }: { accounts: AccountOption[] }) {
     setEdits((prev) => ({ ...prev, [line]: { ...prev[line], ...patch } }));
   const setMap = (patch: Partial<ColumnMapping>) => {
     setMapping((prev) => (prev ? { ...prev, ...patch } : prev));
+    setMappingSource("manual");
     setDone(null);
   };
+
+  const startSplit = (line: number, categoryId: string, amount: number) =>
+    setEdit(line, {
+      splits: [
+        { categoryId, amount: moneyInput(Math.abs(amount)) },
+        { categoryId: "", amount: "" },
+      ],
+    });
+  const setSplit = (line: number, splits: SplitEdit[], index: number, patch: Partial<SplitEdit>) =>
+    setEdit(line, { splits: splits.map((s, i) => (i === index ? { ...s, ...patch } : s)) });
 
   const applyBulk = () => {
     if (!bulkCategory) return;
@@ -167,14 +225,21 @@ export function ImportForm({ accounts }: { accounts: AccountOption[] }) {
           memo: v.memo,
           reference: v.row.reference || undefined,
           amount: v.row.amount,
-          categoryAccountId: v.categoryId,
+          categoryAccountId: v.splits ? "" : v.categoryId,
+          splits: v.splits
+            ? v.parts.map((p) => ({ categoryAccountId: p.categoryId, amount: p.cents ?? 0 }))
+            : undefined,
         })),
+        markCleared,
+        clearLineIds: clearExisting ? clearable.map((v) => v.match!.lineId) : [],
+        savedMapping:
+          table && mapping ? encodeSavedMapping(table[0], columnCount, hasHeader, mapping) : undefined,
       });
       if (result.error) {
         setError(result.error);
         return;
       }
-      setDone(result.imported ?? 0);
+      setDone({ imported: result.imported ?? 0, cleared: result.cleared ?? 0 });
       setTable(null);
       setMapping(null);
       setEdits({});
@@ -215,23 +280,30 @@ export function ImportForm({ accounts }: { accounts: AccountOption[] }) {
       ? `This file has ${rows.length} rows — import at most ${MAX_IMPORT_ROWS} at a time.`
       : checking
         ? "Checking your books for transactions that are already recorded…"
-        : included.length === 0
+        : included.length === 0 && !(clearExisting && clearable.length > 0)
           ? "No rows selected."
           : missingMemo.length > 0
             ? `${missingMemo.length} selected row(s) need a description.`
             : uncategorized.length > 0
               ? `${uncategorized.length} selected row(s) still need a category.`
-              : null;
+              : badSplits.length > 0
+                ? `${badSplits.length} split row(s) need a category and amount on every line, adding up to the total.`
+                : null;
 
   return (
     <div className="flex flex-col gap-6">
       {done !== null && (
         <div className="card flex flex-wrap items-center gap-3 border-emerald-300 dark:border-emerald-800">
           <span className="text-sm font-medium text-emerald-700 dark:text-emerald-300">
-            Imported {done} transaction{done === 1 ? "" : "s"}.
+            Imported {done.imported} transaction{done.imported === 1 ? "" : "s"}.
+            {done.cleared > 0 &&
+              ` Marked ${done.cleared} already in your books as cleared.`}
           </span>
           <Link href="/transactions" className="btn btn-sm">
             View transactions
+          </Link>
+          <Link href="/reconcile" className="btn btn-sm">
+            Reconcile
           </Link>
         </div>
       )}
@@ -242,7 +314,7 @@ export function ImportForm({ accounts }: { accounts: AccountOption[] }) {
           <select
             className="input max-w-72"
             value={accountId}
-            onChange={(e) => setAccountId(e.target.value)}
+            onChange={(e) => changeAccount(e.target.value)}
           >
             <option value="">— choose account —</option>
             {accounts.map((a) => (
@@ -256,7 +328,7 @@ export function ImportForm({ accounts }: { accounts: AccountOption[] }) {
           <label className="label">CSV file from your bank or card</label>
           <input
             // Remount after a successful import so the same file can be re-picked.
-            key={done ?? "file"}
+            key={done ? "after-import" : "file"}
             type="file"
             accept=".csv,text/csv"
             className="input"
@@ -276,11 +348,19 @@ export function ImportForm({ accounts }: { accounts: AccountOption[] }) {
                 <input
                   type="checkbox"
                   checked={hasHeader}
-                  onChange={(e) => setHasHeader(e.target.checked)}
+                  onChange={(e) => {
+                    setHasHeader(e.target.checked);
+                    setMappingSource("manual");
+                  }}
                 />
                 First row is column names
               </label>
             </div>
+            {mappingSource === "saved" && (
+              <p className="text-sm text-emerald-700 dark:text-emerald-400">
+                Using the columns from your last import into this account.
+              </p>
+            )}
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               {columnSelect("Date", mapping.date, (date) => setMap({ date }))}
               <div>
@@ -447,12 +527,12 @@ export function ImportForm({ accounts }: { accounts: AccountOption[] }) {
                       <th className="th">Description</th>
                       <th className="th text-right">Money in</th>
                       <th className="th text-right">Money out</th>
-                      <th className="th w-[26%]">Category</th>
+                      <th className="th w-[32%]">Category</th>
                       <th className="th">Status</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {view.map(({ row, match, repeat, rule, include, categoryId, memo }) => (
+                    {view.map(({ row, match, repeat, rule, include, categoryId, memo, splits, remaining }) => (
                       <tr key={row.line} className={include ? "" : "opacity-60"}>
                         <td className="td">
                           <input
@@ -487,25 +567,119 @@ export function ImportForm({ accounts }: { accounts: AccountOption[] }) {
                           {row.amount < 0 ? formatMoney(-row.amount) : ""}
                         </td>
                         <td className="td">
-                          {include && (
-                            <select
-                              className="input"
-                              aria-label={`Category for row ${row.line}`}
-                              value={categoryId}
-                              onChange={(e) => setEdit(row.line, { categoryId: e.target.value })}
-                            >
-                              <option value="">— choose account —</option>
-                              {accounts
-                                .filter((a) => a.id !== accountId)
-                                .map((a) => (
-                                  <option key={a.id} value={a.id}>
-                                    {a.label}
-                                  </option>
-                                ))}
-                            </select>
+                          {include && !splits && (
+                            <div className="flex items-center gap-1">
+                              <select
+                                className="input"
+                                aria-label={`Category for row ${row.line}`}
+                                value={categoryId}
+                                onChange={(e) => setEdit(row.line, { categoryId: e.target.value })}
+                              >
+                                <option value="">— choose account —</option>
+                                {accounts
+                                  .filter((a) => a.id !== accountId)
+                                  .map((a) => (
+                                    <option key={a.id} value={a.id}>
+                                      {a.label}
+                                    </option>
+                                  ))}
+                              </select>
+                              <button
+                                type="button"
+                                className="btn btn-sm"
+                                title="Divide this transaction between several categories"
+                                aria-label={`Split row ${row.line}`}
+                                onClick={() => startSplit(row.line, categoryId, row.amount)}
+                              >
+                                Split
+                              </button>
+                            </div>
                           )}
-                          {include && rule && (
+                          {include && !splits && rule && (
                             <p className="mt-1 text-xs text-zinc-400">Rule: contains “{rule}”</p>
+                          )}
+                          {include && splits && (
+                            <div className="flex flex-col gap-1">
+                              {splits.map((split, si) => (
+                                <div key={si} className="flex items-center gap-1">
+                                  <select
+                                    className="input"
+                                    aria-label={`Category ${si + 1} for row ${row.line}`}
+                                    value={split.categoryId}
+                                    onChange={(e) =>
+                                      setSplit(row.line, splits, si, { categoryId: e.target.value })
+                                    }
+                                  >
+                                    <option value="">— choose account —</option>
+                                    {accounts
+                                      .filter((a) => a.id !== accountId)
+                                      .map((a) => (
+                                        <option key={a.id} value={a.id}>
+                                          {a.label}
+                                        </option>
+                                      ))}
+                                  </select>
+                                  <input
+                                    className="input w-24 text-right"
+                                    inputMode="decimal"
+                                    placeholder="0.00"
+                                    aria-label={`Amount ${si + 1} for row ${row.line}`}
+                                    value={split.amount}
+                                    onChange={(e) =>
+                                      setSplit(row.line, splits, si, { amount: e.target.value })
+                                    }
+                                  />
+                                  {splits.length > 2 && (
+                                    <button
+                                      type="button"
+                                      className="btn btn-sm"
+                                      aria-label={`Remove line ${si + 1} from row ${row.line}`}
+                                      onClick={() =>
+                                        setEdit(row.line, { splits: splits.filter((_, i) => i !== si) })
+                                      }
+                                    >
+                                      ×
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                              <div className="flex flex-wrap items-center gap-2 text-xs">
+                                <button
+                                  type="button"
+                                  className="underline"
+                                  onClick={() =>
+                                    setEdit(row.line, {
+                                      splits: [
+                                        ...splits,
+                                        { categoryId: "", amount: remaining > 0 ? moneyInput(remaining) : "" },
+                                      ],
+                                    })
+                                  }
+                                >
+                                  Add line
+                                </button>
+                                <button
+                                  type="button"
+                                  className="underline"
+                                  onClick={() => setEdit(row.line, { splits: undefined })}
+                                >
+                                  Remove split
+                                </button>
+                                <span
+                                  className={
+                                    remaining === 0
+                                      ? "text-zinc-400"
+                                      : "text-amber-600 dark:text-amber-400"
+                                  }
+                                >
+                                  {remaining === 0
+                                    ? "Adds up"
+                                    : remaining > 0
+                                      ? `${formatMoney(remaining)} left to assign`
+                                      : `${formatMoney(-remaining)} over`}
+                                </span>
+                              </div>
+                            </div>
                           )}
                         </td>
                         <td className="td whitespace-nowrap text-xs">
@@ -536,6 +710,28 @@ export function ImportForm({ accounts }: { accounts: AccountOption[] }) {
                   </tbody>
                 </table>
               </div>
+              <div className="flex flex-col gap-1 px-5 text-sm">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={markCleared}
+                    onChange={(e) => setMarkCleared(e.target.checked)}
+                  />
+                  Mark imported transactions as cleared, ready to reconcile
+                </label>
+                {clearable.length > 0 && (
+                  <label className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={clearExisting}
+                      onChange={(e) => setClearExisting(e.target.checked)}
+                    />
+                    {`Also mark the ${clearable.length} matching transaction${
+                      clearable.length === 1 ? "" : "s"
+                    } already in your books as cleared`}
+                  </label>
+                )}
+              </div>
               <div className="flex flex-wrap items-center justify-between gap-3 px-5 pb-5">
                 <p className="text-sm text-zinc-500 dark:text-zinc-400">
                   {included.length} of {rows.length} selected · in {formatMoney(moneyIn)} · out{" "}
@@ -550,7 +746,9 @@ export function ImportForm({ accounts }: { accounts: AccountOption[] }) {
                 >
                   {pending
                     ? "Importing…"
-                    : `Import ${included.length} transaction${included.length === 1 ? "" : "s"}`}
+                    : included.length === 0
+                      ? `Mark ${clearable.length} as cleared`
+                      : `Import ${included.length} transaction${included.length === 1 ? "" : "s"}`}
                 </button>
               </div>
             </div>

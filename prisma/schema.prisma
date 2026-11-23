@@ -133,6 +133,8 @@ model Account {
   taxLine     String?
   isArchived  Boolean @default(false)
   parentId    String?
+  // JSON SavedMapping: the CSV column layout last imported into this account.
+  importMapping String?
 
   business Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
   parent   Account?      @relation("AccountChildren", fields: [parentId], references: [id])

@@ -174,6 +174,82 @@ export function looksLikeHeader(row: string[]): boolean {
   return !row.some((cell) => parseCsvDate(cell) !== null || (cell !== "" && parseCsvAmount(cell) !== null));
 }
 
+// ------------------------------------------------- remembered column mapping
+
+/**
+ * A column mapping remembered for one account, with a fingerprint of the file
+ * layout it was made for. It's only reused on a file with the same layout, so
+ * a different export never gets its columns silently mis-read.
+ */
+export type SavedMapping = { layout: string; hasHeader: boolean; mapping: ColumnMapping };
+
+/** Fingerprint of a file's layout: its column names, or just the column count. */
+export function fileLayout(firstRow: string[], columnCount: number, hasHeader: boolean): string {
+  return hasHeader
+    ? `names:${firstRow.map((h) => h.trim().toLowerCase()).join("|")}`
+    : `columns:${columnCount}`;
+}
+
+export function encodeSavedMapping(
+  firstRow: string[],
+  columnCount: number,
+  hasHeader: boolean,
+  mapping: ColumnMapping
+): string {
+  const saved: SavedMapping = { layout: fileLayout(firstRow, columnCount, hasHeader), hasHeader, mapping };
+  return JSON.stringify(saved);
+}
+
+/** Parse stored JSON back to a SavedMapping, or null if it isn't a well-formed one. */
+export function parseSavedMapping(json: string | null | undefined): SavedMapping | null {
+  if (!json) return null;
+  let raw: unknown;
+  try {
+    raw = JSON.parse(json);
+  } catch {
+    return null;
+  }
+  if (!raw || typeof raw !== "object") return null;
+  const { layout, hasHeader, mapping } = raw as Record<string, unknown>;
+  if (typeof layout !== "string" || typeof hasHeader !== "boolean" || !mapping || typeof mapping !== "object") return null;
+  const m = mapping as Record<string, unknown>;
+  const column = (v: unknown) => Number.isInteger(v) && (v as number) >= -1 && (v as number) < 1000;
+  const columns = ["date", "description", "reference", "amount", "indicator", "moneyOut", "moneyIn"];
+  if (!columns.every((key) => column(m[key]))) return null;
+  if (m.mode !== "signed" && m.mode !== "indicator" && m.mode !== "split") return null;
+  if (m.dateFormat !== "MDY" && m.dateFormat !== "DMY") return null;
+  if (typeof m.flipSign !== "boolean") return null;
+  return {
+    layout,
+    hasHeader,
+    mapping: {
+      date: m.date as number,
+      description: m.description as number,
+      reference: m.reference as number,
+      mode: m.mode,
+      amount: m.amount as number,
+      indicator: m.indicator as number,
+      moneyOut: m.moneyOut as number,
+      moneyIn: m.moneyIn as number,
+      flipSign: m.flipSign,
+      dateFormat: m.dateFormat,
+    },
+  };
+}
+
+/** The remembered mapping, if it was saved for a file laid out like this one. */
+export function savedMappingForFile(
+  json: string | null | undefined,
+  firstRow: string[],
+  columnCount: number
+): SavedMapping | null {
+  const saved = parseSavedMapping(json);
+  if (!saved || saved.layout !== fileLayout(firstRow, columnCount, saved.hasHeader)) return null;
+  const m = saved.mapping;
+  const highest = Math.max(m.date, m.description, m.reference, m.amount, m.indicator, m.moneyOut, m.moneyIn);
+  return highest < columnCount ? saved : null;
+}
+
 // ------------------------------------------------------------- row building
 
 export type ImportRow = {
@@ -343,30 +419,51 @@ export function findCategoryRule<R extends CategoryRule>(
 export type EntryLineDraft = { accountId: string; debit: number; credit: number };
 
 /**
+ * One category's share of a row. `amount` is cents in the row's own direction:
+ * the parts of a $500 payment are positive and add up to 500. A negative part
+ * goes the other way — a $970 deposit can be $1,000 of sales and −$30 of fees.
+ */
+export type SplitPart = { categoryAccountId: string; amount: number };
+
+/**
+ * The balanced posting for one imported row split across categories: one line
+ * on the imported account for the full amount (money in is a debit, money out
+ * a credit) and one line per part on the other side. The parts must add up to
+ * the row's amount. Returns an error string when they can't form a valid entry.
+ */
+export function entryLinesForSplit(
+  amount: number,
+  accountId: string,
+  parts: SplitPart[]
+): { lines: EntryLineDraft[] } | { error: string } {
+  if (!Number.isSafeInteger(amount) || amount === 0) return { error: "Amount must be a non-zero number of cents" };
+  if (!accountId || parts.length === 0 || parts.some((p) => !p.categoryAccountId)) return { error: "Missing category account" };
+  if (parts.some((p) => p.categoryAccountId === accountId)) return { error: "Category can't be the account being imported into" };
+  if (parts.some((p) => !Number.isSafeInteger(p.amount) || p.amount === 0)) return { error: "Each split needs a non-zero amount" };
+  const cents = Math.abs(amount);
+  if (parts.reduce((sum, p) => sum + p.amount, 0) !== cents) return { error: "Split amounts don't add up to the transaction amount" };
+  const moneyIn = amount > 0;
+  const accountLine: EntryLineDraft = moneyIn ? { accountId, debit: cents, credit: 0 } : { accountId, debit: 0, credit: cents };
+  const partLines: EntryLineDraft[] = parts.map((p) => {
+    // A positive part sits opposite the account line; a negative one beside it.
+    const debit = moneyIn ? p.amount < 0 : p.amount > 0;
+    const value = Math.abs(p.amount);
+    return { accountId: p.categoryAccountId, debit: debit ? value : 0, credit: debit ? 0 : value };
+  });
+  const lines = moneyIn ? [accountLine, ...partLines] : [...partLines, accountLine];
+  const balanceError = checkBalanced(lines);
+  if (balanceError) return { error: balanceError };
+  return { lines };
+}
+
+/**
  * The balanced two-line posting for one imported row: money in debits the
  * imported account and credits the category; money out is the reverse.
- * Returns an error string when the row can't form a valid entry.
  */
 export function entryLinesForRow(
   amount: number,
   accountId: string,
   categoryAccountId: string
 ): { lines: EntryLineDraft[] } | { error: string } {
-  if (!Number.isSafeInteger(amount) || amount === 0) return { error: "Amount must be a non-zero number of cents" };
-  if (!accountId || !categoryAccountId) return { error: "Missing category account" };
-  if (accountId === categoryAccountId) return { error: "Category can't be the account being imported into" };
-  const cents = Math.abs(amount);
-  const lines: EntryLineDraft[] =
-    amount > 0
-      ? [
-          { accountId, debit: cents, credit: 0 },
-          { accountId: categoryAccountId, debit: 0, credit: cents },
-        ]
-      : [
-          { accountId: categoryAccountId, debit: cents, credit: 0 },
-          { accountId, debit: 0, credit: cents },
-        ];
-  const balanceError = checkBalanced(lines);
-  if (balanceError) return { error: balanceError };
-  return { lines };
+  return entryLinesForSplit(amount, accountId, [{ categoryAccountId, amount: Math.abs(amount) }]);
 }

@@ -2,7 +2,9 @@ import { describe, it, expect } from "vitest";
 import {
   buildImportRows,
   detectColumns,
+  encodeSavedMapping,
   entryLinesForRow,
+  entryLinesForSplit,
   findCategoryRule,
   findRepeatsInFile,
   looksLikeHeader,
@@ -10,6 +12,8 @@ import {
   parseCsv,
   parseCsvAmount,
   parseCsvDate,
+  parseSavedMapping,
+  savedMappingForFile,
 } from "../src/lib/csvImport";
 import { checkBalanced } from "../src/lib/ledger";
 
@@ -249,6 +253,79 @@ describe("findCategoryRule", () => {
     expect(findCategoryRule("anything", rules)).toBeNull();
     expect(findCategoryRule("Paid Check 5171", rules, "bank")).toBeNull();
     expect(findCategoryRule("Paid Check 5171", rules, "card")?.id).toBe("r3");
+  });
+});
+
+describe("saved column mapping", () => {
+  const mapping = { ...detectColumns(BANK_HEADER), flipSign: true };
+  const json = encodeSavedMapping(BANK_HEADER, BANK_HEADER.length, true, mapping);
+
+  it("round-trips for a file with the same column names", () => {
+    const upper = BANK_HEADER.map((h) => ` ${h.toUpperCase()} `);
+    expect(savedMappingForFile(json, upper, upper.length)).toEqual({
+      layout: expect.any(String),
+      hasHeader: true,
+      mapping,
+    });
+  });
+
+  it("is not reused on a differently laid-out file", () => {
+    expect(savedMappingForFile(json, ["Date", "Description", "Amount"], 3)).toBeNull();
+    const reordered = [...BANK_HEADER].reverse();
+    expect(savedMappingForFile(json, reordered, reordered.length)).toBeNull();
+  });
+
+  it("matches headerless files by column count", () => {
+    const m = { ...detectColumns([]), date: 0, description: 1, amount: 2 };
+    const saved = encodeSavedMapping(["01/02/2026", "x", "1.00"], 3, false, m);
+    expect(savedMappingForFile(saved, ["03/04/2026", "y", "2.00"], 3)?.mapping).toEqual(m);
+    expect(savedMappingForFile(saved, ["03/04/2026", "y", "2.00", "extra"], 4)).toBeNull();
+  });
+
+  it("rejects malformed stored values", () => {
+    expect(parseSavedMapping(null)).toBeNull();
+    expect(parseSavedMapping("not json")).toBeNull();
+    expect(parseSavedMapping('{"layout":"x","hasHeader":true,"mapping":{"date":"0"}}')).toBeNull();
+    expect(parseSavedMapping(json.replace('"signed"', '"sideways"').replace('"indicator"', '"sideways"'))).toBeNull();
+  });
+});
+
+describe("entryLinesForSplit", () => {
+  it("splits a payment across categories", () => {
+    const loan = entryLinesForSplit(-50000, "bank", [
+      { categoryAccountId: "loan", amount: 38000 },
+      { categoryAccountId: "interest", amount: 12000 },
+    ]);
+    if ("error" in loan) throw new Error(loan.error);
+    expect(loan.lines).toEqual([
+      { accountId: "loan", debit: 38000, credit: 0 },
+      { accountId: "interest", debit: 12000, credit: 0 },
+      { accountId: "bank", debit: 0, credit: 50000 },
+    ]);
+    expect(checkBalanced(loan.lines)).toBeNull();
+  });
+
+  it("puts a negative part on the account's side (deposit net of fees)", () => {
+    const deposit = entryLinesForSplit(97000, "bank", [
+      { categoryAccountId: "sales", amount: 100000 },
+      { categoryAccountId: "fees", amount: -3000 },
+    ]);
+    if ("error" in deposit) throw new Error(deposit.error);
+    expect(deposit.lines).toEqual([
+      { accountId: "bank", debit: 97000, credit: 0 },
+      { accountId: "sales", debit: 0, credit: 100000 },
+      { accountId: "fees", debit: 3000, credit: 0 },
+    ]);
+    expect(checkBalanced(deposit.lines)).toBeNull();
+  });
+
+  it("rejects parts that don't add up, are zero, or lack a category", () => {
+    const part = (categoryAccountId: string, amount: number) => ({ categoryAccountId, amount });
+    expect(entryLinesForSplit(-500, "bank", [part("a", 300), part("b", 100)])).toHaveProperty("error");
+    expect(entryLinesForSplit(-500, "bank", [part("a", 500), part("b", 0)])).toHaveProperty("error");
+    expect(entryLinesForSplit(-500, "bank", [part("a", 300), part("", 200)])).toHaveProperty("error");
+    expect(entryLinesForSplit(-500, "bank", [part("a", 300), part("bank", 200)])).toHaveProperty("error");
+    expect(entryLinesForSplit(-500, "bank", [])).toHaveProperty("error");
   });
 });
 
