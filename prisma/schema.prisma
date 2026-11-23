@@ -28,6 +28,7 @@ model Business {
   loans           Loan[]
   reconciliations Reconciliation[]
   auditEvents     AuditEvent[]
+  importRules     ImportRule[]
 }
 
 // An immutable record of a change to a journal entry (created / updated /
@@ -143,6 +144,7 @@ model Account {
   loansAsInterest  Loan[] @relation("LoanInterestAccount")
   loansAsPayment   Loan[] @relation("LoanPaymentAccount")
   reconciliations  Reconciliation[]
+  importRules      ImportRule[]
 
   @@index([businessId, type])
 }
@@ -207,6 +209,22 @@ model Reconciliation {
   lines    JournalLine[]
 
   @@index([businessId, accountId])
+}
+
+// A CSV-import categorization rule: a row whose description contains `match`
+// (case-insensitive) is suggested `categoryAccountId`. Only ever a suggestion
+// in the review screen — nothing posts without the user clicking Import.
+model ImportRule {
+  id                String   @id @default(cuid())
+  businessId        String
+  match             String
+  categoryAccountId String
+  createdAt         DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  category Account  @relation(fields: [categoryAccountId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
 }
 
 model Tag {

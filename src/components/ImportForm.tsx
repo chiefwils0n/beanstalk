@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState, useTransition } from "react";
-import { importTransactions, previewImport, type ImportPreview } from "../lib/actions";
+import { addImportRule, importTransactions, previewImport, type ImportPreview } from "../lib/actions";
 import {
   buildImportRows,
   detectColumns,
@@ -31,6 +31,13 @@ export function ImportForm({ accounts }: { accounts: AccountOption[] }) {
   const [bulkCategory, setBulkCategory] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<number | null>(null);
+  // Quick "add a rule" row in the review card. Bumping rulesVersion re-asks
+  // the server for suggestions so a new rule fills in matching rows at once.
+  const [ruleText, setRuleText] = useState("");
+  const [ruleCategory, setRuleCategory] = useState("");
+  const [ruleNote, setRuleNote] = useState<{ ok: boolean; text: string } | null>(null);
+  const [rulesVersion, setRulesVersion] = useState(0);
+  const [savingRule, startRuleTransition] = useTransition();
 
   const loadFile = async (file: File | undefined) => {
     setError(null);
@@ -76,8 +83,8 @@ export function ImportForm({ accounts }: { accounts: AccountOption[] }) {
   // Ask the server which rows are already in the books and what category each
   // description got last time. Keyed so a stale answer is never applied.
   const previewKey = useMemo(
-    () => (accountId && rows.length && !tooMany ? JSON.stringify([accountId, rows]) : ""),
-    [accountId, rows, tooMany]
+    () => (accountId && rows.length && !tooMany ? JSON.stringify([accountId, rulesVersion, rows]) : ""),
+    [accountId, rows, tooMany, rulesVersion]
   );
   useEffect(() => {
     if (!previewKey) return;
@@ -101,12 +108,15 @@ export function ImportForm({ accounts }: { accounts: AccountOption[] }) {
     const edit = edits[row.line] ?? {};
     const match = live?.matches[i] ?? null;
     const repeat = repeats.has(i);
+    const suggestion = live?.suggestions[i] ?? "";
     return {
       row,
       match,
       repeat,
+      // The rule behind this row's category, while the category is still the rule's.
+      rule: (edit.categoryId ?? suggestion) === suggestion ? (live?.ruleMatches[i] ?? null) : null,
       include: edit.include ?? (!match && !repeat),
-      categoryId: edit.categoryId ?? live?.suggestions[i] ?? "",
+      categoryId: edit.categoryId ?? suggestion,
       memo: edit.memo ?? row.description,
     };
   });
@@ -129,6 +139,21 @@ export function ImportForm({ accounts }: { accounts: AccountOption[] }) {
       const next = { ...prev };
       for (const v of uncategorized) next[v.row.line] = { ...next[v.row.line], categoryId: bulkCategory };
       return next;
+    });
+  };
+
+  const saveRule = () => {
+    setRuleNote(null);
+    startRuleTransition(async () => {
+      const result = await addImportRule({ match: ruleText, categoryAccountId: ruleCategory });
+      if (result.error) {
+        setRuleNote({ ok: false, text: result.error });
+        return;
+      }
+      setRuleNote({ ok: true, text: `Rule saved for "${ruleText.trim()}".` });
+      setRuleText("");
+      setRuleCategory("");
+      setRulesVersion((v) => v + 1);
     });
   };
 
@@ -364,6 +389,55 @@ export function ImportForm({ accounts }: { accounts: AccountOption[] }) {
                   </button>
                 </div>
               </div>
+              <div className="flex flex-wrap items-end gap-2 border-y border-zinc-200 px-5 py-3 dark:border-zinc-800">
+                <div>
+                  <label className="label">New rule: description contains</label>
+                  <input
+                    className="input w-56"
+                    value={ruleText}
+                    maxLength={200}
+                    placeholder="e.g. Herring Rental"
+                    onChange={(e) => setRuleText(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="label">Always use category</label>
+                  <select
+                    className="input max-w-64"
+                    value={ruleCategory}
+                    onChange={(e) => setRuleCategory(e.target.value)}
+                  >
+                    <option value="">— choose account —</option>
+                    {accounts.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={saveRule}
+                  disabled={savingRule || !ruleText.trim() || !ruleCategory}
+                >
+                  {savingRule ? "Saving…" : "Save rule"}
+                </button>
+                <Link href="/settings/import-rules" target="_blank" className="btn">
+                  Manage rules
+                </Link>
+                {ruleNote && (
+                  <p
+                    className={`w-full text-sm ${
+                      ruleNote.ok
+                        ? "text-emerald-700 dark:text-emerald-400"
+                        : "text-red-600 dark:text-red-400"
+                    }`}
+                  >
+                    {ruleNote.text}
+                  </p>
+                )}
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
@@ -378,7 +452,7 @@ export function ImportForm({ accounts }: { accounts: AccountOption[] }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {view.map(({ row, match, repeat, include, categoryId, memo }) => (
+                    {view.map(({ row, match, repeat, rule, include, categoryId, memo }) => (
                       <tr key={row.line} className={include ? "" : "opacity-60"}>
                         <td className="td">
                           <input
@@ -429,6 +503,9 @@ export function ImportForm({ accounts }: { accounts: AccountOption[] }) {
                                   </option>
                                 ))}
                             </select>
+                          )}
+                          {include && rule && (
+                            <p className="mt-1 text-xs text-zinc-400">Rule: contains “{rule}”</p>
                           )}
                         </td>
                         <td className="td whitespace-nowrap text-xs">

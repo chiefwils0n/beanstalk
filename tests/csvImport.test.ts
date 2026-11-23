@@ -3,6 +3,7 @@ import {
   buildImportRows,
   detectColumns,
   entryLinesForRow,
+  findCategoryRule,
   findRepeatsInFile,
   looksLikeHeader,
   matchExistingLines,
@@ -219,6 +220,35 @@ describe("matchExistingLines", () => {
 
   it("ignores lines outside the date tolerance", () => {
     expect(matchExistingLines([{ date: "2026-06-20", amount: -54244 }], ledger).size).toBe(0);
+  });
+});
+
+describe("findCategoryRule", () => {
+  const rules = [
+    { id: "r1", match: "Herring", categoryAccountId: "rent" },
+    { id: "r2", match: "herring  rental", categoryAccountId: "rental-income" },
+    { id: "r3", match: "paid check", categoryAccountId: "bank" },
+    { id: "r4", match: "   ", categoryAccountId: "misc" },
+  ];
+
+  it("matches anywhere in the description, ignoring case and spacing", () => {
+    expect(findCategoryRule("ACH DEPOSIT   HERRING co", rules)?.id).toBe("r1");
+    expect(findCategoryRule("Coffee shop", rules)).toBeNull();
+  });
+
+  it("prefers the longest matching text, then the earlier rule", () => {
+    expect(findCategoryRule("Deposit Herring Rental", rules)?.id).toBe("r2");
+    const tie = [
+      { id: "a", match: "acme", categoryAccountId: "x" },
+      { id: "b", match: "ACME", categoryAccountId: "y" },
+    ];
+    expect(findCategoryRule("Acme Inc", tie)?.id).toBe("a");
+  });
+
+  it("ignores blank rules and rules pointing at the imported account", () => {
+    expect(findCategoryRule("anything", rules)).toBeNull();
+    expect(findCategoryRule("Paid Check 5171", rules, "bank")).toBeNull();
+    expect(findCategoryRule("Paid Check 5171", rules, "card")?.id).toBe("r3");
   });
 });
 

@@ -11,7 +11,14 @@ import { parseDate, parseMoney, toDateInput } from "./money";
 import { postOccurrence, runDueRecurring, advanceDate } from "./recurring";
 import { standardPayment, monthlyRate } from "./loans";
 import { checkBalanced } from "./ledger";
-import { entryLinesForRow, matchExistingLines, MAX_IMPORT_ROWS, MATCH_TOLERANCE_DAYS } from "./csvImport";
+import {
+  entryLinesForRow,
+  findCategoryRule,
+  matchExistingLines,
+  normalizeRuleText,
+  MAX_IMPORT_ROWS,
+  MATCH_TOLERANCE_DAYS,
+} from "./csvImport";
 import type { Prisma } from "@prisma/client";
 
 function str(formData: FormData, key: string): string {
@@ -408,8 +415,13 @@ export type ImportPreviewRow = { date: string; amount: number; description: stri
 export type ImportPreview = {
   /** Per row: the existing entry that already records it, if any. */
   matches: ({ entryId: string; date: string; memo: string } | null)[];
-  /** Per row: the category last used for the same description on this account. */
+  /**
+   * Per row: a suggested category — from an import rule when one matches the
+   * description, otherwise the category last used for the same description.
+   */
   suggestions: (string | null)[];
+  /** Per row: the text of the import rule behind the suggestion, if any. */
+  ruleMatches: (string | null)[];
 };
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -428,7 +440,7 @@ export async function previewImport(
   if (rows.some((r) => !ISO_DATE.test(r.date) || !Number.isSafeInteger(r.amount))) return { error: "Invalid row data" };
   const account = await prisma.account.findFirst({ where: { id: accountId, businessId: business.id } });
   if (!account) return { error: "Account not found" };
-  if (rows.length === 0) return { matches: [], suggestions: [] };
+  if (rows.length === 0) return { matches: [], suggestions: [], ruleMatches: [] };
 
   const dates = rows.map((r) => r.date).sort();
   const pad = MATCH_TOLERANCE_DAYS * 86400000;
@@ -470,8 +482,78 @@ export async function previewImport(
     const other = entry.lines.find((l) => l.accountId !== accountId);
     if (other && !other.account.isArchived) categoryByMemo.set(entry.memo, other.accountId);
   }
-  const suggestions = rows.map((r) => categoryByMemo.get(r.description) ?? null);
-  return { matches, suggestions };
+
+  // Explicit rules beat memory. Rules whose category has been archived are
+  // left out, so a row never gets a category it can't be imported with.
+  const rules = await prisma.importRule.findMany({
+    where: { businessId: business.id, category: { isArchived: false } },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, match: true, categoryAccountId: true },
+  });
+  const ruleByRow = rows.map((r) => findCategoryRule(r.description, rules, accountId));
+  const suggestions = rows.map(
+    (r, i) => ruleByRow[i]?.categoryAccountId ?? categoryByMemo.get(r.description) ?? null
+  );
+  return { matches, suggestions, ruleMatches: ruleByRow.map((rule) => rule?.match ?? null) };
+}
+
+/**
+ * Validate and store an import rule (create, or update when `id` is given).
+ * Returns an error message instead of throwing so the import screen can show it.
+ */
+async function saveImportRule(input: {
+  id?: string;
+  match: string;
+  categoryAccountId: string;
+}): Promise<{ error?: string }> {
+  const business = await requireBusiness();
+  const match = input.match.replace(/\s+/g, " ").trim();
+  if (!match) return { error: "Enter the text to look for" };
+  if (match.length > 200) return { error: "Rule text is too long" };
+  const category = await prisma.account.findFirst({
+    where: { id: input.categoryAccountId, businessId: business.id, isArchived: false },
+  });
+  if (!category) return { error: "Choose a category account" };
+  const others = await prisma.importRule.findMany({ where: { businessId: business.id } });
+  if (input.id && !others.some((r) => r.id === input.id)) return { error: "Rule not found" };
+  if (others.some((r) => r.id !== input.id && normalizeRuleText(r.match) === normalizeRuleText(match))) {
+    return { error: `There is already a rule for "${match}"` };
+  }
+  if (input.id) {
+    await prisma.importRule.update({ where: { id: input.id }, data: { match, categoryAccountId: category.id } });
+  } else {
+    await prisma.importRule.create({ data: { businessId: business.id, match, categoryAccountId: category.id } });
+  }
+  revalidatePath("/settings/import-rules");
+  return {};
+}
+
+/** Add a rule from the import review screen. */
+export async function addImportRule(input: { match: string; categoryAccountId: string }) {
+  return saveImportRule(input);
+}
+
+export async function createImportRule(formData: FormData) {
+  const result = await saveImportRule({
+    match: str(formData, "match"),
+    categoryAccountId: str(formData, "categoryAccountId"),
+  });
+  if (result.error) throw new Error(result.error);
+}
+
+export async function updateImportRule(formData: FormData) {
+  const result = await saveImportRule({
+    id: str(formData, "id"),
+    match: str(formData, "match"),
+    categoryAccountId: str(formData, "categoryAccountId"),
+  });
+  if (result.error) throw new Error(result.error);
+}
+
+export async function deleteImportRule(formData: FormData) {
+  const business = await requireBusiness();
+  await prisma.importRule.deleteMany({ where: { id: str(formData, "id"), businessId: business.id } });
+  revalidatePath("/settings/import-rules");
 }
 
 export type ImportRowInput = {

@@ -304,6 +304,40 @@ export function matchExistingLines(
   return matches;
 }
 
+// -------------------------------------------------------- categorization rules
+
+export type CategoryRule = { id: string; match: string; categoryAccountId: string };
+
+/** Case- and spacing-insensitive form used to compare rule text with descriptions. */
+export function normalizeRuleText(text: string): string {
+  return text.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+/**
+ * The rule that applies to a description: one whose text appears anywhere in
+ * it, ignoring case and extra spaces. When several apply, the longest text
+ * wins (it's the most specific); a tie goes to the earlier rule in the list.
+ * Rules pointing at the account being imported into never apply.
+ */
+export function findCategoryRule<R extends CategoryRule>(
+  description: string,
+  rules: R[],
+  importAccountId = ""
+): R | null {
+  const haystack = normalizeRuleText(description);
+  let best: R | null = null;
+  let bestLength = 0;
+  for (const rule of rules) {
+    const needle = normalizeRuleText(rule.match);
+    if (!needle || rule.categoryAccountId === importAccountId) continue;
+    if (needle.length > bestLength && haystack.includes(needle)) {
+      best = rule;
+      bestLength = needle.length;
+    }
+  }
+  return best;
+}
+
 // ---------------------------------------------------------------- posting
 
 export type EntryLineDraft = { accountId: string; debit: number; credit: number };
