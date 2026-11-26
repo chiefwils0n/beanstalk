@@ -2,9 +2,8 @@ import Link from "next/link";
 import { prisma } from "../../lib/db";
 import { requireBusiness } from "../../lib/business";
 import { ensureDefaultContactTypes, flattenContacts } from "../../lib/contacts";
-import { createContact, deleteContact } from "../../lib/actions";
+import { deleteContact } from "../../lib/actions";
 import { ConfirmButton } from "../../components/ConfirmButton";
-import { ContactFields } from "../../components/ContactFields";
 
 export default async function ContactsPage({
   searchParams,
@@ -36,7 +35,12 @@ export default async function ContactsPage({
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="page-title">Contacts</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="page-title">Contacts</h1>
+        <Link href="/contacts/new" className="btn btn-primary">
+          + New contact
+        </Link>
+      </div>
       <p className="text-sm text-zinc-500 dark:text-zinc-400">
         People and companies, in your own categories. Nest related contacts (tenants in a
         household, people at a company) and link any of them to transaction lines. Manage the
@@ -79,7 +83,7 @@ export default async function ContactsPage({
             {ordered.length === 0 && (
               <tr>
                 <td className="td text-zinc-500" colSpan={7}>
-                  No contacts yet — add one below.
+                  No contacts yet — add one with New contact.
                 </td>
               </tr>
             )}
@@ -124,17 +128,6 @@ export default async function ContactsPage({
             })}
           </tbody>
         </table>
-      </div>
-
-      <div className="card">
-        <h2 className="mb-3 font-semibold">New contact</h2>
-        <form action={createContact}>
-          <ContactFields
-            types={types}
-            parents={allContacts.map((c) => ({ id: c.id, name: c.name }))}
-          />
-          <button className="btn btn-primary mt-4">Add contact</button>
-        </form>
       </div>
     </div>
   );

@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { prisma } from "../../lib/db";
 import { requireBusiness } from "../../lib/business";
-import { getBalances, buildTree, flattenAccounts, type AccountNode } from "../../lib/accounting";
-import { createAccount, setAccountArchived, deleteAccount } from "../../lib/actions";
+import { getBalances, buildTree, type AccountNode } from "../../lib/accounting";
+import { setAccountArchived, deleteAccount } from "../../lib/actions";
 import { formatMoney } from "../../lib/money";
 import { ACCOUNT_TYPES, ACCOUNT_TYPE_LABELS, type AccountType } from "../../lib/types";
 import { ConfirmButton } from "../../components/ConfirmButton";
@@ -76,7 +76,6 @@ export default async function AccountsPage() {
     prisma.account.findMany({ where: { businessId: business.id } }),
     getBalances(business.id),
   ]);
-  const options = flattenAccounts(accounts);
 
   // Section accent per account type, matching the dashboard stat-card palette.
   const titleText = "text-zinc-900 dark:text-zinc-100";
@@ -90,7 +89,12 @@ export default async function AccountsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="page-title">Chart of Accounts</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="page-title">Chart of Accounts</h1>
+        <Link href="/accounts/new" className="btn btn-primary">
+          + New account
+        </Link>
+      </div>
 
       {ACCOUNT_TYPES.map((type) => {
         const tree = buildTree(
@@ -125,52 +129,6 @@ export default async function AccountsPage() {
           </div>
         );
       })}
-
-      <div className="card">
-        <h2 className="mb-3 font-semibold">New account</h2>
-        <form action={createAccount} className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div>
-            <label className="label">Name *</label>
-            <input name="name" required className="input" />
-          </div>
-          <div>
-            <label className="label">Type *</label>
-            <select name="type" className="input" required>
-              {ACCOUNT_TYPES.map((type) => (
-                <option key={type} value={type}>
-                  {ACCOUNT_TYPE_LABELS[type as AccountType]}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="label">Code</label>
-            <input name="code" className="input" placeholder="e.g. 6150" />
-          </div>
-          <div>
-            <label className="label">Parent account (nests underneath)</label>
-            <select name="parentId" className="input" defaultValue="">
-              <option value="">— none (top level) —</option>
-              {options.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.label} ({option.type})
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="label">Tax line (for tax reports)</label>
-            <input name="taxLine" className="input" placeholder="e.g. Supplies (Line 22)" />
-          </div>
-          <div>
-            <label className="label">Description</label>
-            <input name="description" className="input" />
-          </div>
-          <div className="sm:col-span-3">
-            <button className="btn btn-primary">Add account</button>
-          </div>
-        </form>
-      </div>
     </div>
   );
 }
